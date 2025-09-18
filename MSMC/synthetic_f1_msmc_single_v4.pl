@@ -2,7 +2,7 @@
 use Term::ANSIColor qw(:constants);
 use threads;
 use threads::shared;
-use Time::HiRes qw(gettimeofday);
+#use Time::HiRes qw(gettimeofday);
 my $time = scalar localtime();
 
 chomp(@ARGV);
@@ -55,6 +55,8 @@ for (my $i=0; $i<=$#ARGV; $i++){
         }
     }
 }
+
+#print "debug:\ns1:$syn_list_s1\ns2:$syn_list_s2\nlist_name:$syn_list_name\npop:$syn_list_pop\n";
 
 =skip
 my $thread = $ARGV[0];
@@ -120,7 +122,7 @@ if ($thread > 1){
    		$thread = $thread - 1;
    	}
    	my @thr = (); my @joinable;
-   	my $start_time = gettimeofday();
+   	#my $start_time = gettimeofday();
    	my $cnt = 0;
    	do {
    		foreach my $d (1..$thread){
@@ -144,13 +146,13 @@ if ($thread > 1){
    		do {
    			sleep(30);
    			@running = threads->list(threads::running);
-   			my $end_time = gettimeofday();
-   			my $elapsed_time = $end_time - $start_time;
-   			if ($elapsed_time >= 3600){ # if the thread has run for an hour, detach all results.
-   				foreach my $d (1..$thread){
-   					$thr[$d]->detach();
-   				}
-   			}
+   			#my $end_time = gettimeofday();
+   			#my $elapsed_time = $end_time - $start_time;
+   			#if ($elapsed_time >= 3600){ # if the thread has run for an hour, detach all results.
+   			#	foreach my $d (1..$thread){
+   			#		$thr[$d]->detach();
+   			#	}
+   			#}
    		} until (scalar(@running) == 0);
    		@joinable = threads->list(threads::joinable);
    		if (scalar(@joinable) > 0){
@@ -256,7 +258,7 @@ while (my $line = <INPUT>){
 			my @snd_sample = split(/\/|\|/, $line_vec[$snd_pos]);
 			my @returns; my $end; my $start;
 			if ($syn !~ /syn/){
-				$snd_sample[0] = $snd_sample[1];
+				$snd_sample[0] = $fst_sample[1];
 			}
 			if ($fst_sample[0] =~ /\./ || $snd_sample[0] =~ /\./){
 				@returns = &beds("mask", $line_vec[0], $line_vec[1], $last_mask[$n], $chr, $record);

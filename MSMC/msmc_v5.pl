@@ -326,6 +326,7 @@ if (scalar(@vcfs) == 1){
 		foreach my $n (1..scalar(@chr_n)){
 			my $sep_out = $vcfs[0];
 			$sep_out =~ s/vcf\.gz$/$chr_n[$n-1].vcf.gz/;
+			$out = "";
 			unless (-e $sep_out && $ow == 0){
 				$out = "bcftools view --threads $thread -r $chr_n[$n-1] -Oz -o $sep_out $vcfs[0]\\n";
 			}
@@ -446,7 +447,7 @@ for my $z (1..$rand){
 			push(@in_beds, "\-\-mask $o_path\/$s_name\.$s_pop\.msmc$syn\.$chr_name\.sorted\.bed\.gz");
 			if ($out){
 				print BASH "qsub \.\/qsub_files\/$ran\_msmc_2_$cnt\.q\n";
-				&pbs_setting("$exc$proj$bedtool\-cj_quiet -cj_ppn $thread -cj_qname msmc_2_$cnt -cj_sn $ran -cj_qout . $out");
+				&pbs_setting("$exc$proj$bedtool\-cj_quiet -cj_ppn $thread -cj_mem 128 -cj_qname msmc_2_$cnt -cj_sn $ran -cj_qout . $out");
 				$out = "";
 			}
 			$cnt++;
@@ -487,21 +488,24 @@ for my $z (1..$rand){
 				if ($_ eq "0"){
 					next;
 				}
+				#print "debug: chr: $_\n";
 				$out = "";
 				my @comm_beds1; my @comm_vcfs1; my @comm_beds2; my @comm_vcfs2;
 				foreach my $in_bed (@in_beds){
-					if ($in_bed =~ /$_/ && $in_bed =~ /$pops[0]/){
+					if ($in_bed =~ /\.$_\./ && $in_bed =~ /\b$pops[0]\b/){
 						push(@comm_beds1, $in_bed);
+						#print "debug: bed: $in_bed\n";
 					}
-					if ($in_bed =~ /$_/ && $in_bed =~ /$pops[$x]/){
+					if ($in_bed =~ /\.$_\./ && $in_bed =~ /\b$pops[$x]\b/){
 						push(@comm_beds2, $in_bed);
+						#print "debug: bed: $in_bed\n";
 					}				
 				}
 				foreach my $in_vcf (@in_vcfs){
-					if ($in_vcf =~ /$_/ && $in_vcf =~ /$pops[0]/){
+					if ($in_vcf =~ /\.$_\./ && $in_vcf =~ /\b$pops[0]\b/){
 						push(@comm_vcfs1, $in_vcf);
 					}
-					if ($in_vcf =~ /$_/ && $in_vcf =~ /$pops[$x]/){
+					if ($in_vcf =~ /\.$_\./ && $in_vcf =~ /\b$pops[$x]\b/){
 						push(@comm_vcfs2, $in_vcf);
 					}
 				}
@@ -536,7 +540,7 @@ for my $z (1..$rand){
 				$pop2_alleles = ($#comm_vcfs2 + 1) * 2 - 1;
 				if ($out){
 					print BASH3 "qsub \.\/qsub_files\/$ran\_msmc_3\_$cnt\.q\n";
-					&pbs_setting("$exc$proj\-cj_quiet -cj_mem 12 -cj_qname msmc_3\_$cnt -cj_sn $ran -cj_qout . $out");
+					&pbs_setting("$exc$proj\-cj_quiet -cj_mem 128 -cj_qname msmc_3\_$cnt -cj_sn $ran -cj_qout . $out");
 				}
 				$cnt++;
 			}
@@ -644,7 +648,7 @@ for my $z (1..$rand){
 		$sp5_files[-1] .= "$o_path\/$pop1\_$pop2\/$pop1\_$pop2\_msmc2\.$z.final\.txt";
 		if ($out){
 			print BASH4 "qsub \.\/qsub_files\/$ran\_msmc_4\_$cnt\.q\n";
-			&pbs_setting("$exc$proj\-cj_quiet -cj_qname msmc_4\_$cnt -cj_sn $ran -cj_qout . -cj_ppn $thread $out");
+			&pbs_setting("$exc$proj\-cj_quiet -cj_qname msmc_4\_$cnt -cj_sn $ran -cj_qout . -cj_ppn $thread -cj_mem 128 $out");
 		}
 		$cnt++;
 	}

@@ -83,6 +83,25 @@ det.range <- function(col.x = NULL, col.y = NULL, point = 0.5, side = "left") {
   return(c(sep.side.x, sep.side.y))
 }
 
+safe_approx <- function(x, y, xout, rule = 2) {
+  valid <- complete.cases(x, y)
+  x <- x[valid]
+  y <- y[valid]
+  dup <- duplicated(x)
+  x <- x[!dup]
+  y <- y[!dup]
+  if (length(x) < 2) {
+    return(list(
+      x = xout,
+      y = rep(NA_real_, length(xout))
+    ))
+  }
+  ord <- order(x)
+  x <- x[ord]
+  y <- y[ord]
+  approx(x = x, y = y, xout = xout, rule = rule)
+}
+
 args <- commandArgs(trailingOnly = TRUE)
 mu <- as.numeric(args[1]) #mutation rate
 mu_out <- as.character(mu)
@@ -148,10 +167,10 @@ for (i in 1:length(files)){
   x.left <- rccr.table[which(rccr.table$mean.y == y.min),1]
   x.left <- x.left[length(x.left)]
   rccr.table <- rccr.table[(x.left+1):nrow(rccr.table),] #remove left x data
-  tmp.y.max <- max(rccr.table$mean.y, na.rm = T)
-  rccr.table$mean.y <- rccr.table$mean.y/tmp.y.max #re-scale
-  rccr.table$upper.bound <- rccr.table$upper.bound/tmp.y.max #also re-scale corresponding 95% CI region
-  rccr.table$lower.bound <- rccr.table$lower.bound/tmp.y.max
+  #tmp.y.max <- max(rccr.table$mean.y, na.rm = T)
+  #rccr.table$mean.y <- rccr.table$mean.y/tmp.y.max #re-scale
+  #rccr.table$upper.bound <- rccr.table$upper.bound/tmp.y.max #also re-scale corresponding 95% CI region
+  #rccr.table$lower.bound <- rccr.table$lower.bound/tmp.y.max
   tmax <- rccr.table$mean.x.left[which(rccr.table$mean.x.left < Inf)]
   x.min.ticks <- sort(tmax[which(tmax > -Inf)])[1]
   xticks <- x.ticks(x.min.ticks,max(tmax, na.rm = T))
@@ -198,9 +217,12 @@ for (i in 1:length(files)){
   mid.point.idx <- min.idx(col.y = rccr.table$mean.y, point = mid.point)
   mid.point.idx.upper <- min.idx(col.y = rccr.table$upper.bound, point = mid.point)
   mid.point.idx.lower <- min.idx(col.y = rccr.table$lower.bound, point = mid.point)
-  sep.points <- approx(rccr.table$mean.y[mid.point.idx:nrow(rccr.table)], rccr.table$mean.x.left[mid.point.idx:nrow(rccr.table)], xout = c(mid.point,mid.start))
-  sep.points.upper <- approx(rccr.table$upper.bound[mid.point.idx.upper:nrow(rccr.table)], rccr.table$mean.x.left[mid.point.idx.upper:nrow(rccr.table)], xout = c(mid.point,mid.start))
-  sep.points.lower <- approx(rccr.table$lower.bound[mid.point.idx.lower:nrow(rccr.table)], rccr.table$mean.x.left[mid.point.idx.lower:nrow(rccr.table)], xout = c(mid.point,mid.start))
+  sep.points <- safe_approx(rccr.table$mean.y[mid.point.idx:nrow(rccr.table)], rccr.table$mean.x.left[mid.point.idx:nrow(rccr.table)], xout = c(mid.point,mid.start))
+  #sep.points <- approx(rccr.table$mean.y[mid.point.idx:nrow(rccr.table)], rccr.table$mean.x.left[mid.point.idx:nrow(rccr.table)], xout = c(mid.point,mid.start))
+  sep.points.upper <- safe_approx(rccr.table$upper.bound[mid.point.idx.upper:nrow(rccr.table)], rccr.table$mean.x.left[mid.point.idx.upper:nrow(rccr.table)], xout = c(mid.point,mid.start))
+  #sep.points.upper <- approx(rccr.table$upper.bound[mid.point.idx.upper:nrow(rccr.table)], rccr.table$mean.x.left[mid.point.idx.upper:nrow(rccr.table)], xout = c(mid.point,mid.start))
+  sep.points.lower <- safe_approx(rccr.table$lower.bound[mid.point.idx.lower:nrow(rccr.table)], rccr.table$mean.x.left[mid.point.idx.lower:nrow(rccr.table)], xout = c(mid.point, mid.start))
+  #sep.points.lower <- approx(rccr.table$lower.bound[mid.point.idx.lower:nrow(rccr.table)], rccr.table$mean.x.left[mid.point.idx.lower:nrow(rccr.table)], xout = c(mid.point,mid.start))
   range.box[[i]] <- as.data.frame(c(sep.points[["y"]][1], sep.points[["y"]][2]))
   range.box.ci <- as.data.frame(cbind(c(sep.points.upper[["y"]][1], sep.points.upper[["y"]][2]),c(sep.points.lower[["y"]][1], sep.points.lower[["y"]][2])))
   pop_pair <- paste0(pop.name.1,'_',pop.name.2)
@@ -208,10 +230,18 @@ for (i in 1:length(files)){
   colnames(range.box[[i]]) <- c("time.point","lower","upper","pair", "rccr")
   rownames(range.box[[i]]) <- c(mid.point,mid.start)
   #range.box.ci.lower[[i]] <- as.data.frame(c(sep.points.lower[["y"]][1], sep.points.lower[["y"]][2]))
-  sep.plot <- ggplot() +
-    geom_rect(data = range.box[[i]], xmin = range.box[[i]][1,1], xmax = range.box[[i]][2,1], ymin = 0, ymax = Inf, fill = "#fff2a7") +
-    geom_rect(data = range.box[[i]], xmin = range.box[[i]][1,2], xmax = range.box[[i]][1,3], ymin = 0, ymax = Inf, fill = "#f6ba75", alpha = 1) + # rccr = 0.5, 95% CI
-    geom_rect(data = range.box[[i]], xmin = range.box[[i]][2,2], xmax = range.box[[i]][2,3], ymin = 0, ymax = Inf, fill = "#f6ba75", alpha = 1) #rccr = 0.8, 95% CI
+  if (!grepl("NA", range.box[[i]][1,1]) && !grepl("NA", range.box[[i]][2,1])){
+    sep.plot <- ggplot() +
+      geom_rect(data = range.box[[i]], xmin = range.box[[i]][1,1], xmax = range.box[[i]][2,1], ymin = 0, ymax = Inf, fill = "#fff2a7")
+  }
+  if (!grepl("NA", range.box[[i]][1,2]) && !grepl("NA", range.box[[i]][1,3])){
+    sep.plot <- ggplot() +
+      geom_rect(data = range.box[[i]], xmin = range.box[[i]][1,2], xmax = range.box[[i]][1,3], ymin = 0, ymax = Inf, fill = "#f6ba75", alpha = 1) # rccr = 0.5, 95% CI
+  }
+  if (!grepl("NA", range.box[[i]][2,2]) && !grepl("NA", range.box[[i]][2,3])){
+    sep.plot <- ggplot() +
+      geom_rect(data = range.box[[i]], xmin = range.box[[i]][2,2], xmax = range.box[[i]][2,3], ymin = 0, ymax = Inf, fill = "#f6ba75", alpha = 1) #rccr = 0.8, 95% CI
+  }
   if (grepl("final\\.out$", files[i])){ #if it is an averaging data, also plot original data
     files.ori <- c()
     for (k in 1:length(dirs)){
@@ -234,8 +264,7 @@ for (i in 1:length(files)){
       rccr.table.ori$x.ori <- x.ori
       rccr.table.ori$y.ori <- y.ori
       rccr.table.ori <- rccr.table.ori[start.row.idx:end.row.idx,]
-      #rccr.table.ori$y.ori <- rccr.table.ori$y.ori/rccr.table.ori$y.ori[max.mean.y.idx] #re-scale
-      rccr.table.ori$y.ori <- rccr.table.ori$y.ori/max(rccr.table.ori$y.ori, na.rm = T) #re-scale
+      #rccr.table.ori$y.ori <- rccr.table.ori$y.ori/max(rccr.table.ori$y.ori, na.rm = T) #re-scale
       ori.plots[[l]] <- rccr.table.ori
       #sep.plot <- sep.plot + geom_step(ori.plots[[l]], mapping = aes(x.ori, y.ori), color = "grey70", alpha = 1, size = 0.2)
       if (indv.show == 1){
@@ -245,7 +274,7 @@ for (i in 1:length(files)){
   }
   sep.plot <- sep.plot +
     #geom_rect(data = rccr.table, aes(xmin = mean.x.left, xmax = mean.x.right, ymin = lower.bound, ymax = upper.bound), fill = "#4b8bcb", alpha = 0.7)
-    geom_ribbon(data = rccr.table, aes(x = mean.x.left, y = mean.y, xmin = mean.x.left, xmay = mean.x.right, ymin = lower.bound, ymax = upper.bound), fill = "#4b8bcb", color = NA, alpha = 0.7, show.legend = NA)
+    geom_ribbon(data = rccr.table, aes(x = mean.x.left, y = mean.y, xmin = mean.x.left, xmax = mean.x.right, ymin = lower.bound, ymax = upper.bound), fill = "#4b8bcb", color = NA, alpha = 0.7, show.legend = NA)
   #sep.plot <- sep.plot + geom_step(data = rccr.table, mapping = aes(mean.x.left, mean.y), color = "black", size = 0.5)
   sep.plot <- sep.plot + geom_line(data = rccr.table, mapping = aes(mean.x.left, mean.y), color = "black", size = 0.5)
   #sep.plot <- sep.plot + geom_smooth(rccr.table, mapping = aes(x, y), method = "loess", se = F, formula = 'y ~ x', color = "black", size = 0.5)

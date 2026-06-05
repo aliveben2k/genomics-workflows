@@ -68,11 +68,7 @@ for (i in 1:length(args)){
   }
 }
 
-dirs <- list.dirs(path, full.names = T, recursive = T)
-files <- c()
-for (k in 1:length(dirs)){
-  files <- list.files(dirs[k], pattern=paste0("introgression_", thres, ".rda"), full.names=TRUE)
-}
+files <- list.files(path, pattern=paste0("introgression_", thres, ".rda"), full.names=TRUE)
 if (length(files) == 0){
   quit("no")
 }
@@ -80,6 +76,7 @@ if (length(files) == 0){
 #read the genome infomation
 geno.info <- read.table(geno.info.file, header = T, sep = "\t")
 geno.info <- as.data.frame(geno.info)
+geno.info.all <- geno.info
 
 #read the population info
 lines <- readLines(pop.info)
@@ -105,27 +102,51 @@ for (i in 1:length(files)){
 for (sample in names(all.samples)){
   curr.unique.win <- all.samples[[sample]]
   #sort by chromosome order
-  curr.unique.win <- curr.unique.win %>% mutate(order = match(Chr, geno.info$Chr)) %>%
-    arrange(order) %>%
+  curr.unique.win <- curr.unique.win %>% mutate(order = match(Chr, geno.info.all$Chr)) %>%
+    arrange(order, Pos) %>%
     select(-order)
-  all.chrs <- unique(curr.unique.win$Chr)
-  geno.info <- geno.info[geno.info$Chr %in% all.chrs,]
-  chr.pos <- geno.info %>% mutate(total = cumsum(as.numeric(Length)) - Length) %>% select(-Length)
-  curr.unique.win <- chr.pos %>% left_join(curr.unique.win, ., by="Chr") %>% arrange(Chr, Pos) %>% mutate(BPcum=Pos+total)
-  X_axis <- curr.unique.win %>% group_by(Chr) %>% summarize(center=(max(BPcum, na.rm = TRUE) + min(BPcum, na.rm = TRUE))/2)
+  chr.pos <- geno.info.all %>% mutate(total = cumsum(as.numeric(Length)) - Length)
+  curr.unique.win <- curr.unique.win %>%
+    left_join(chr.pos %>% select(Chr, Length, total), by="Chr") %>%
+    arrange(total, Pos) %>%
+    mutate(
+      BPcum = Pos + total,
+      BPcum_left = pmax(Pos_left_border + total, total + 1),
+      BPcum_right = pmin(Pos_right_border + total, total + as.numeric(Length)),
+      BPcum_left = pmin(BPcum_left, BPcum_right)
+    )
+  plot.value.col <- colnames(curr.unique.win)[5]
+  missing.plot.rows <- is.na(curr.unique.win[,plot.value.col])
+  if (any(missing.plot.rows)){
+    cat(
+      "Skipping ", sum(missing.plot.rows), " NA window(s) in ",
+      plot.value.col, " before plotting.\n",
+      sep = ""
+    )
+    curr.unique.win <- curr.unique.win[!missing.plot.rows,]
+  }
+  if (nrow(curr.unique.win) == 0){
+    cat("No non-missing windows found for ", plot.value.col, "; skipping plot.\n", sep = "")
+    next
+  }
+  curr.unique.win$Plot_ratio <- curr.unique.win[,plot.value.col]
+  curr.unique.win$Plot_CI_lower <- curr.unique.win[,6]
+  curr.unique.win$Plot_CI_upper <- curr.unique.win[,7]
+  X_axis <- chr.pos %>% mutate(center = total + as.numeric(Length) / 2) %>% select(Chr, center)
   X_axis$Chr <- gsub("chr|chr0", "", X_axis$Chr, ignore.case = T)
-  X_lines <- chr.pos[2:nrow(chr.pos),2]
+  X_lines <- chr.pos$total[2:nrow(chr.pos)]
+  x_limit <- max(chr.pos$total + as.numeric(chr.pos$Length), na.rm = TRUE)
   write.table(curr.unique.win, file = paste0(path,"/", colnames(curr.unique.win)[5],"_introgression_", thres,".txt"), col.names = T, row.names = F, quote = F, sep = "\t")
-  curr.plot <- ggplot(curr.unique.win, aes(x = BPcum, y = curr.unique.win[,5])) +
-    geom_ribbon(aes(ymin = 0, ymax = curr.unique.win[,5], fill = trio[1]), alpha = 1) +
-    geom_ribbon(aes(ymin = curr.unique.win[,5], ymax = 1, fill = trio[2]), alpha = 1) +
+  curr.plot <- ggplot(curr.unique.win) +
+    geom_rect(aes(xmin = BPcum_left, xmax = BPcum_right, ymin = 0, ymax = Plot_ratio, fill = trio[1]), alpha = 1) +
+    geom_rect(aes(xmin = BPcum_left, xmax = BPcum_right, ymin = Plot_ratio, ymax = 1, fill = trio[2]), alpha = 1) +
     geom_vline(xintercept = X_lines, color = "white") +
     scale_fill_manual(
       values = setNames(c(p1.color, p2.color), c(trio[1], trio[2])),
       breaks = c(trio[1], trio[2]),
       name = "Parent"
     ) +
-    scale_x_continuous(label=X_axis$Chr, breaks=X_axis$center, expand = c(0.02, 0)) +
+    scale_x_continuous(label=X_axis$Chr, breaks=X_axis$center, limits = c(1, x_limit), expand = c(0, 0)) +
     scale_y_continuous(limits=c(0, 1), expand=c(0, 0), breaks = c(0,0.5,1)) +
     labs(x = "Chromosome", y = "Ratio", title = colnames(curr.unique.win)[5]) +
     guides(color = "none", fill = guide_legend(nrow = 1)) + theme_minimal() + 
@@ -156,7 +177,7 @@ for (sample in names(all.samples)){
           text = element_text(color = "black", size = 7.5))
   if (CI.switch == 1){
     curr.plot <- curr.plot +
-      geom_ribbon(aes(ymin = curr.unique.win[,6], ymax = curr.unique.win[,7]), fill = "white", alpha = 0.25)
+      geom_rect(aes(xmin = BPcum_left, xmax = BPcum_right, ymin = Plot_CI_lower, ymax = Plot_CI_upper), fill = "white", alpha = 0.25)
   }  
   ggsave(
     filename = paste0(path,"/", colnames(curr.unique.win)[5],"_introgression_", thres,".pdf"),

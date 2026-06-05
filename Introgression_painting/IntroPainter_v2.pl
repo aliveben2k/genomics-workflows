@@ -291,7 +291,7 @@ if ($exc == 1){
 }
 
 #do introgression calculation
-$outname = "${outname}_w${win}_s${step}_m${missing}_d{$diff}";
+$outname = "${outname}_w${win}_s${step}_m${missing}_d${diff}";
 unless (-d "$path\/${ran}_${outname}_output"){
 	system("mkdir $path\/${ran}_${outname}_output");
 }

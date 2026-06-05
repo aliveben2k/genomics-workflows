@@ -4,6 +4,7 @@ use Term::ANSIColor qw(:constants);
 use threads;
 use threads::shared;
 use File::Temp qw(tempfile);
+use Fcntl qw(:flock);
 use IO::Compress::Gzip qw($GzipError);
 use IO::Uncompress::Gunzip qw($GunzipError);
 our @TMP_CHUNKS;
@@ -118,14 +119,7 @@ if ($ran){
 else {
 	$info_out = "$path_l\/genome_info.txt";
 }
-unless (-e $info_out){
-    open (INFO, ">$info_out") || die "Cannot write the genome info to $info_out: $!\n";
-    print INFO "Chr\tLength\n";
-    foreach my $i (0..$#chrs){
-	    print INFO "$chrs[$i]\t$chr_lengths[$i]\n";
-    }
-    close(INFO);
-}
+&update_genome_info($info_out, \@chrs, \@chr_lengths);
 
 my $thread; my @check;
 foreach my $cnt (0..$#vcfs){
@@ -166,7 +160,7 @@ foreach my $cnt (0..$#vcfs){
 	    if ($sep == 1 && length($chr) > 0){
 	    	@check = grep { $_ eq $chr } @check;
 	    }
-    my $line = `zcat $vcfs[0] \| head -n 10000 \| grep \"\#CHROM"`;
+    my $line = `zcat $vcfs[$cnt] \| head -n 10000 \| grep \"\#CHROM"`;
     @vcf_samples = split(/\t/, $line);
     chomp(@vcf_samples);
     my @header_for_print; my @lists;
@@ -487,6 +481,45 @@ sub cleanup_tmp_chunks {
 		unlink($chunk_file) if defined $chunk_file && -e $chunk_file;
 	}
 	@TMP_CHUNKS = ();
+}
+
+sub update_genome_info {
+	my ($info_out, $chr_ref, $len_ref) = @_;
+	my $lock_file = "$info_out.lock";
+	open(my $lock_fh, ">", $lock_file) || die "Cannot lock genome info $info_out: $!\n";
+	flock($lock_fh, LOCK_EX) || die "Cannot lock genome info $info_out: $!\n";
+
+	my %seen;
+	my @lines;
+	if (-e $info_out){
+		open(my $in_fh, "<", $info_out) || die "Cannot read genome info $info_out: $!\n";
+		while (my $line = <$in_fh>){
+			chomp($line);
+			next if $line eq "";
+			if ($line =~ /^Chr\tLength$/){
+				next;
+			}
+			my ($chr_name) = split(/\t/, $line);
+			next if $seen{$chr_name}++;
+			push(@lines, $line);
+		}
+		close($in_fh);
+	}
+
+	foreach my $i (0..$#$chr_ref){
+		next if $seen{$chr_ref->[$i]};
+		push(@lines, "$chr_ref->[$i]\t$len_ref->[$i]");
+		$seen{$chr_ref->[$i]} = 1;
+	}
+
+	open(my $out_fh, ">", $info_out) || die "Cannot write the genome info to $info_out: $!\n";
+	print $out_fh "Chr\tLength\n";
+	foreach my $line (@lines){
+		print $out_fh "$line\n";
+	}
+	close($out_fh);
+	flock($lock_fh, LOCK_UN);
+	close($lock_fh);
 }
 
 sub usage {

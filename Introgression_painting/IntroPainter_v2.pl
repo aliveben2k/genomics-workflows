@@ -189,6 +189,16 @@ print "The serial number is: $ran\n";
 
 #get genome information
 my @chrs = &chr_name($vcfs[0], $pre);
+my @chr_lengths = &chr_lengths($vcfs[0], $pre);
+if (scalar(@chr_lengths) != scalar(@chrs)){
+	@chr_lengths = &chr_lengths($vcfs[0]);
+}
+open (INFO, ">$path\/$ran\_genome_info.txt") || die "Cannot write $path\/$ran\_genome_info.txt: $!\n";
+print INFO "Chr\tLength\n";
+foreach my $i (0..$#chrs){
+	print INFO "$chrs[$i]\t$chr_lengths[$i]\n";
+}
+close(INFO);
 
 #indexing the vcf if necessary
 open (BASH, ">my_bash_introgression_1_$ran.sh") || print "Cannot write my_bash_introgression_1_$ran.sh: $!\n";

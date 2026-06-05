@@ -101,11 +101,24 @@ for (i in 1:length(files)){
 
 for (sample in names(all.samples)){
   curr.unique.win <- all.samples[[sample]]
+  curr.unique.win$Chr_label <- gsub("^chr0?", "", curr.unique.win$Chr, ignore.case = T)
+  main.chr.rows <- grepl("^[0-9]+$", curr.unique.win$Chr_label)
+  if (any(main.chr.rows)){
+    skipped.chrs <- setdiff(unique(curr.unique.win$Chr), unique(curr.unique.win$Chr[main.chr.rows]))
+    if (length(skipped.chrs) > 0){
+      cat("Skipping non-numbered contig(s) in plot: ", paste(skipped.chrs, collapse = ", "), "\n", sep = "")
+    }
+    curr.unique.win <- curr.unique.win[main.chr.rows,]
+  }
+  curr.unique.win <- curr.unique.win %>% select(-Chr_label)
   #sort by chromosome order
   curr.unique.win <- curr.unique.win %>% mutate(order = match(Chr, geno.info.all$Chr)) %>%
     arrange(order, Pos) %>%
     select(-order)
-  chr.pos <- geno.info.all %>% mutate(total = cumsum(as.numeric(Length)) - Length)
+  all.chrs <- unique(curr.unique.win$Chr)
+  chr.pos <- geno.info.all %>%
+    filter(Chr %in% all.chrs) %>%
+    mutate(total = cumsum(as.numeric(Length)) - Length)
   curr.unique.win <- curr.unique.win %>%
     left_join(chr.pos %>% select(Chr, Length, total), by="Chr") %>%
     arrange(total, Pos) %>%
@@ -132,21 +145,30 @@ for (sample in names(all.samples)){
   curr.unique.win$Plot_ratio <- curr.unique.win[,plot.value.col]
   curr.unique.win$Plot_CI_lower <- curr.unique.win[,6]
   curr.unique.win$Plot_CI_upper <- curr.unique.win[,7]
+  plot.win <- do.call(rbind, lapply(split(curr.unique.win, curr.unique.win$Chr), function(chr.win){
+    chr.win <- chr.win[order(chr.win$BPcum),]
+    start.win <- chr.win[1,]
+    end.win <- chr.win[nrow(chr.win),]
+    start.win$BPcum <- start.win$total + 1
+    end.win$BPcum <- end.win$total + as.numeric(end.win$Length)
+    rbind(start.win, chr.win, end.win)
+  }))
+  rownames(plot.win) <- NULL
   X_axis <- chr.pos %>% mutate(center = total + as.numeric(Length) / 2) %>% select(Chr, center)
-  X_axis$Chr <- gsub("chr|chr0", "", X_axis$Chr, ignore.case = T)
-  X_lines <- chr.pos$total[2:nrow(chr.pos)]
+  X_axis$Chr <- gsub("^chr0?", "", X_axis$Chr, ignore.case = T)
+  X_lines <- if (nrow(chr.pos) > 1) chr.pos$total[2:nrow(chr.pos)] else c()
   x_limit <- max(chr.pos$total + as.numeric(chr.pos$Length), na.rm = TRUE)
   write.table(curr.unique.win, file = paste0(path,"/", colnames(curr.unique.win)[5],"_introgression_", thres,".txt"), col.names = T, row.names = F, quote = F, sep = "\t")
-  curr.plot <- ggplot(curr.unique.win) +
-    geom_rect(aes(xmin = BPcum_left, xmax = BPcum_right, ymin = 0, ymax = Plot_ratio, fill = trio[1]), alpha = 1) +
-    geom_rect(aes(xmin = BPcum_left, xmax = BPcum_right, ymin = Plot_ratio, ymax = 1, fill = trio[2]), alpha = 1) +
+  curr.plot <- ggplot(plot.win) +
+    geom_ribbon(aes(x = BPcum, ymin = 0, ymax = Plot_ratio, group = Chr, fill = trio[1]), alpha = 1) +
+    geom_ribbon(aes(x = BPcum, ymin = Plot_ratio, ymax = 1, group = Chr, fill = trio[2]), alpha = 1) +
     geom_vline(xintercept = X_lines, color = "white") +
     scale_fill_manual(
       values = setNames(c(p1.color, p2.color), c(trio[1], trio[2])),
       breaks = c(trio[1], trio[2]),
       name = "Parent"
     ) +
-    scale_x_continuous(label=X_axis$Chr, breaks=X_axis$center, limits = c(1, x_limit), expand = c(0, 0)) +
+    scale_x_continuous(label=X_axis$Chr, breaks=X_axis$center, limits = c(1, x_limit), expand = c(0.01, 0)) +
     scale_y_continuous(limits=c(0, 1), expand=c(0, 0), breaks = c(0,0.5,1)) +
     labs(x = "Chromosome", y = "Ratio", title = colnames(curr.unique.win)[5]) +
     guides(color = "none", fill = guide_legend(nrow = 1)) + theme_minimal() + 
@@ -155,13 +177,14 @@ for (sample in names(all.samples)){
           panel.grid.major.y = element_blank(), 
           panel.grid.minor.y = element_blank(),
           axis.text = element_text(color = "black", size = 7.5),
+          axis.text.x = element_text(margin = margin(t = 0.12, unit = "cm")),
           axis.line.y = element_line(colour = "black", size = 0.2),
           axis.line.x = element_blank(),
           axis.ticks.y = element_line(colour = "black", size = 0.2),
           axis.ticks.length.y = unit(-0.1, "cm"),
           axis.ticks.x = element_blank(),
           #axis.title.x = element_blank(),
-          axis.title.x = element_text(margin = margin(t = 0.02, unit = "cm")),
+          axis.title.x = element_text(margin = margin(t = 0.10, unit = "cm")),
           axis.title.y = element_text(angle = 0,vjust = 0.5),
           #axis.text.x = element_blank(),
           plot.caption = element_text(face = "italic"),
@@ -177,7 +200,7 @@ for (sample in names(all.samples)){
           text = element_text(color = "black", size = 7.5))
   if (CI.switch == 1){
     curr.plot <- curr.plot +
-      geom_rect(aes(xmin = BPcum_left, xmax = BPcum_right, ymin = Plot_CI_lower, ymax = Plot_CI_upper), fill = "white", alpha = 0.25)
+      geom_ribbon(aes(x = BPcum, ymin = Plot_CI_lower, ymax = Plot_CI_upper, group = Chr), fill = "white", alpha = 0.25)
   }  
   ggsave(
     filename = paste0(path,"/", colnames(curr.unique.win)[5],"_introgression_", thres,".pdf"),

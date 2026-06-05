@@ -3,7 +3,7 @@ library(dplyr)
 
 s.help <- function(){
   cat("\nThis scirpt is writtern by Ben Chien. Sep. 2025
-Usage: Rscript intro_plot.R -p PATH -t FILE -gi FILE [-ci] [-p1c COLOR] [-p2c COLOR]\n
+Usage: Rscript intro_plot.R -p PATH -t FILE -gi FILE [-d NUM] [-ci] [-p1c COLOR] [-p2c COLOR]\n
 -p/--path: path of rda files generated from new_intro_count.R.
 -t/--trios: trios information file. (samples are seperate by tab)
   Format:
@@ -11,6 +11,7 @@ Usage: Rscript intro_plot.R -p PATH -t FILE -gi FILE [-ci] [-p1c COLOR] [-p2c CO
   Parent_Pop2 Sample3 Sample4...
   Test_Pop Sample5 Sample6...
 -gi/--genome_info: genome information generated from vcf2trios_thread.pl (*genome_info.txt).
+-d/--diff_threshold: major allele frequency threshold in each parent group (0-1). Default: 0.8
 -ci/--ci: show 95% confidence interval. Default: False.
 -p1c/--p1_color: the color to indicate the ratio from ancestor 1. Default: blue.
 -p2c/--p2_color: the color to indicate the ratio from ancestor 2. Default: yellow.\n")
@@ -24,6 +25,7 @@ if (length(args) == 0){
 path <- c()
 pop.info <- c()
 geno.info.file <- c()
+thres <- 0.8
 CI.switch <- 0
 p1.color = "#4b8bcb"
 p2.color = "gold"
@@ -55,6 +57,9 @@ for (i in 1:length(args)){
   if (args[i] == '-ci' || args[i] == '--ci'){
     CI.switch <- 1
   }
+  if (args[i] == '-d'){
+    thres <- as.numeric(args[i+1])
+  }
   if (args[i] == '-p1c' || args[i] == '--p1_color'){
     p1.color <- as.character(args[i+1])
   }
@@ -66,7 +71,7 @@ for (i in 1:length(args)){
 dirs <- list.dirs(path, full.names = T, recursive = T)
 files <- c()
 for (k in 1:length(dirs)){
-  files <- list.files(dirs[k], pattern="introgression\\.rda$", full.names=TRUE)
+  files <- list.files(dirs[k], pattern=paste0("introgression_", thres, ".rda"), full.names=TRUE)
 }
 if (length(files) == 0){
   quit("no")
@@ -110,14 +115,20 @@ for (sample in names(all.samples)){
   X_axis <- curr.unique.win %>% group_by(Chr) %>% summarize(center=(max(BPcum, na.rm = TRUE) + min(BPcum, na.rm = TRUE))/2)
   X_axis$Chr <- gsub("chr|chr0", "", X_axis$Chr, ignore.case = T)
   X_lines <- chr.pos[2:nrow(chr.pos),2]
+  write.table(curr.unique.win, file = paste0(path,"/", colnames(curr.unique.win)[5],"_introgression_", thres,".txt"), col.names = T, row.names = F, quote = F, sep = "\t")
   curr.plot <- ggplot(curr.unique.win, aes(x = BPcum, y = curr.unique.win[,5])) +
-    geom_ribbon(aes(ymin = 0, ymax = curr.unique.win[,5]), fill = p1.color, alpha = 1) +
-    geom_ribbon(aes(ymin = curr.unique.win[,5], ymax = 1), fill = p2.color, alpha = 1) +
+    geom_ribbon(aes(ymin = 0, ymax = curr.unique.win[,5], fill = trio[1]), alpha = 1) +
+    geom_ribbon(aes(ymin = curr.unique.win[,5], ymax = 1, fill = trio[2]), alpha = 1) +
     geom_vline(xintercept = X_lines, color = "white") +
+    scale_fill_manual(
+      values = setNames(c(p1.color, p2.color), c(trio[1], trio[2])),
+      breaks = c(trio[1], trio[2]),
+      name = "Parent"
+    ) +
     scale_x_continuous(label=X_axis$Chr, breaks=X_axis$center, expand = c(0.02, 0)) +
     scale_y_continuous(limits=c(0, 1), expand=c(0, 0), breaks = c(0,0.5,1)) +
     labs(x = "Chromosome", y = "Ratio", title = colnames(curr.unique.win)[5]) +
-    guides(color = "none") + theme_minimal() + 
+    guides(color = "none", fill = guide_legend(nrow = 1)) + theme_minimal() + 
     theme(panel.grid.major.x = element_blank(), 
           panel.grid.minor.x = element_blank(), 
           panel.grid.major.y = element_blank(), 
@@ -129,16 +140,30 @@ for (sample in names(all.samples)){
           axis.ticks.length.y = unit(-0.1, "cm"),
           axis.ticks.x = element_blank(),
           #axis.title.x = element_blank(),
+          axis.title.x = element_text(margin = margin(t = 0.02, unit = "cm")),
           axis.title.y = element_text(angle = 0,vjust = 0.5),
           #axis.text.x = element_blank(),
           plot.caption = element_text(face = "italic"),
           plot.title = element_text(color = "black", size = 7.5),
+          legend.position = "bottom",
+          legend.title = element_text(color = "black", size = 7.5),
+          legend.text = element_text(color = "black", size = 7.5),
+          legend.key.height = unit(0.25, "cm"),
+          legend.key.width = unit(0.6, "cm"),
+          legend.margin = margin(t = -0.08, b = 0, unit = "cm"),
+          legend.box.margin = margin(t = -0.08, b = 0, unit = "cm"),
+          legend.spacing.y = unit(0, "cm"),
           text = element_text(color = "black", size = 7.5))
   if (CI.switch == 1){
     curr.plot <- curr.plot +
       geom_ribbon(aes(ymin = curr.unique.win[,6], ymax = curr.unique.win[,7]), fill = "white", alpha = 0.25)
   }  
-  tiff(paste0(path,"/", colnames(curr.unique.win)[5],"_introgression.tiff"), units = "cm",res = 600, width = 15, height = 2)
-  print(curr.plot)
-  dev.off()
+  ggsave(
+    filename = paste0(path,"/", colnames(curr.unique.win)[5],"_introgression_", thres,".pdf"),
+    plot = curr.plot,
+    device = "pdf",
+    units = "cm",
+    width = 15,
+    height = 2.5
+  )
 }

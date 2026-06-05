@@ -15,7 +15,7 @@ if ($#ARGV == -1){
 	&usage;
 	exit;
 }
-my $conda = "R-4.1";
+my $conda = "R-4.4";
 
 print "This script is writtern by Ben Chien. Sep. 2025\n";
 print "Input command line:\n";
@@ -24,8 +24,8 @@ print "perl IntroPainter_v2\.pl @ARGV\n\n";
 sub usage {
     print "Usage: perl IntroPainter_v2.pl -vcf PATH -list LIST_FILE [-win INT] [-step INT] [-pre PREFIX] [-p1c COLOR] [-p2c COLOR] [-ci] [-rcal] [-rplot] [-conda NAME] [-sn SN] [-m FLOAT] [-d FLOAT] [-n] [-mem INT] [-local] [-ow] [-exc]\n";
     print "-list: trios list, population_name follows by sample_names. 3 lines: 2 parents at first two lines, and the testing population in the 3rd line.\n";
-    print "-win: window size (SNP number). Default: 10000\n";
-    print "-step: step size (SNP number). Default: 5000\n";
+    print "-win: window size (SNP number). Default: 1000\n";
+    print "-step: step size (SNP number). Default: 500\n";
     print "-p1c: represent color of ancestor 1 in the figure. If you use color code, please add \'\'. Default: blue\n";
     print "-p2c: represent color of ancestor 2 in the figure. If you use color code, please add \'\'. Default: red\n";
     print "-ci: shown 95% confidence interval or not. Default: False\n";
@@ -33,7 +33,7 @@ sub usage {
     print "-d: allele differential rate of the sites between two parents. Default: 0.8\n";
     print "-rcal: re-calcutate introgression ratios only.\n";
     print "-rplot: re-plot introgression figures only.\n";
-    print "-conda: conda environment name. Default: R-4.1\n";
+    print "-conda: conda environment name. Default: R-4.4\n";
     print "-n: threads to use. Default: 1\n";
     print "-mem: memory to use. Default: 12Gb\n";
     print "-ow: over-write the outputs.\n";
@@ -45,7 +45,7 @@ sub usage {
 
 my $path_v; my $path; my @vcfs; my $list; my $out; my $ran; my $exc = 0; my $missing = 0.8; my $diff = 0.8;
 my $mem = 12; my $thread_in = 1; my $local; my $pre; my $cj_exc; my $ci; my $rc = 0; my $rp = 0;
-my $win = 10000; my $step = 5000; my $ow = 0; my $sn = 0; my $p1c = "blue"; my $p2c = "red";
+my $win = 1000; my $step = 500; my $ow = 0; my $sn = 0; my $p1c = "blue"; my $p2c = "red";
 for (my $i=0; $i<=$#ARGV; $i++){
 	if ($ARGV[$i] eq "\-exc"){
 		$exc = 1;
@@ -273,7 +273,7 @@ foreach my $i (0..$#vcfs){
 	my $trios_file_name = $vcfs[$i];
 	$trios_file_name =~ s/\.vcf\./.$ran.trios./;
 	unless (-e $trios_file_name && $ow == 0){
-		$out = "perl vcf2trios_thread.pl -vcf $vcfs[$i] -list $list -sn $ran -n $thread_in\\n";
+		$out = "perl vcf2trios_thread_v2.pl -vcf $vcfs[$i] -list $list -sn $ran -n $thread_in\\n";
 		my $return = &pbs_setting("$cj_exc$local\-cj_quiet -cj_mem $mem -cj_ppn $thread_in -cj_qname convertion_$i -cj_sn $ran -cj_qout . $out");
 		print BASH "$return\n";
 	}
@@ -292,12 +292,20 @@ if ($exc == 1){
 unless (-d "$path\/$ran\_output"){
 	system("mkdir $path\/$ran\_output");
 }
-my $ck_files = `ls -l $path\/$ran\_output \| grep \"introgression.rda\"`;
+my $ck_files = `ls -l $path\/$ran\_output \| grep \"introgression_${diff}.rda\"`;
+if ($thread_in > 4){
+    $thread_in = 4;
+}
+if ($mem <= 24){
+    if ($thread_in > 2){
+        $thread_in = 2;
+    }
+}
 unless ($ck_files && $ow == 0 && $rc == 0){
 	open (BASH, ">my_bash_introgression_3_$ran.sh") || print "Cannot write my_bash_introgression_3_$ran.sh: $!\n";
 	foreach my $i (0..$#trios_files){
-		$out = "Rscript new_intro_count_2.R -g $trios_files[$i] -t $list -gi $path\/$ran\_genome_info.txt -p $path\/$ran\_output -w $win -s $step -m $missing -d $diff\\n";
-		my $return = &pbs_setting("$cj_exc$local\-cj_quiet -cj_mem $mem -cj_conda $conda -cj_qname calculation_$i -cj_sn $ran -cj_qout . $out");
+		$out = "Rscript new_intro_count_2_majorAF.R -g $trios_files[$i] -t $list -gi $path\/$ran\_genome_info.txt -p $path\/$ran\_output -w $win -s $step -m $missing -d $diff -n $thread_in\\n";
+		my $return = &pbs_setting("$cj_exc$local\-cj_quiet -cj_ppn $thread_in -cj_mem $mem -cj_conda $conda -cj_qname calculation_$i -cj_sn $ran -cj_qout . $out");
 		print BASH "$return\n";
 	}
 	unless ($local){
@@ -312,9 +320,9 @@ unless ($ck_files && $ow == 0 && $rc == 0){
 
 #plotting
 $ck_files = "";
-$ck_files = `ls -l $path\/$ran\_output \| grep \"introgression.tiff\"`;
+$ck_files = `ls -l $path\/$ran\_output \| grep \"introgression_${diff}.pdf\"`;
 unless ($ck_files && $ow == 0 && $rp == 0){
-	$out = "Rscript intro_plot_2.R -p $path\/$ran\_output -t $list -gi $path\/$ran\_genome_info.txt $ci\-p1c $p1c -p2c $p2c\\n";
+	$out = "Rscript intro_plot_2.R -p $path\/$ran\_output -d $diff -t $list -gi $path\/$ran\_genome_info.txt $ci\-p1c $p1c -p2c $p2c\\n";
 	&pbs_setting("$cj_exc$local\-cj_quiet -cj_conda $conda -cj_qname plotting -cj_sn $ran -cj_qout . $out");
 	if ($exc == 1){
 		unless ($local){

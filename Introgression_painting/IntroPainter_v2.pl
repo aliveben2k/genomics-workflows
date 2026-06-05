@@ -45,7 +45,7 @@ sub usage {
 
 my $path_v; my $path; my @vcfs; my $list; my $out; my $ran; my $exc = 0; my $missing = 0.8; my $diff = 0.8;
 my $mem = 12; my $thread_in = 1; my $local; my $pre; my $cj_exc; my $ci; my $rc = 0; my $rp = 0;
-my $win = 1000; my $step = 500; my $ow = 0; my $sn = 0; my $p1c = "blue"; my $p2c = "red";
+my $win = 1000; my $step = 500; my $ow = 0; my $sn = 0; my $p1c = "blue"; my $p2c = "red"; my $outname;
 for (my $i=0; $i<=$#ARGV; $i++){
 	if ($ARGV[$i] eq "\-exc"){
 		$exc = 1;
@@ -81,13 +81,15 @@ for (my $i=0; $i<=$#ARGV; $i++){
         }
         if ($list =~ /\//){
 			my @tmps = split(/\//, $list);
-			pop(@tmps);
+			$outname = pop(@tmps);
 			$path = join("\/", @tmps);
         }
 		else {
 			$path = ".";
+			$outname = $list;
 		}
 		$path = &check_path($path);
+		$outname =~ s/\.txt$|\.list$//;
 	}
 	if ($ARGV[$i] eq "\-sn"){
         $ran = "$ARGV[$i+1]";
@@ -289,10 +291,11 @@ if ($exc == 1){
 }
 
 #do introgression calculation
-unless (-d "$path\/$ran\_output"){
-	system("mkdir $path\/$ran\_output");
+$outname = "${outname}_w${win}_s${step}_m${missing}_d{$diff}";
+unless (-d "$path\/${ran}_${outname}_output"){
+	system("mkdir $path\/${ran}_${outname}_output");
 }
-my $ck_files = `ls -l $path\/$ran\_output \| grep \"introgression_${diff}.rda\"`;
+my $ck_files = `ls -l $path\/${ran}_${outname}_output \| grep \"introgression_${diff}.rda\"`;
 if ($thread_in > 4){
     $thread_in = 4;
 }
@@ -304,7 +307,7 @@ if ($mem <= 24){
 unless ($ck_files && $ow == 0 && $rc == 0){
 	open (BASH, ">my_bash_introgression_3_$ran.sh") || print "Cannot write my_bash_introgression_3_$ran.sh: $!\n";
 	foreach my $i (0..$#trios_files){
-		$out = "Rscript new_intro_count_2_majorAF.R -g $trios_files[$i] -t $list -gi $path\/$ran\_genome_info.txt -p $path\/$ran\_output -w $win -s $step -m $missing -d $diff -n $thread_in\\n";
+		$out = "Rscript new_intro_count_2_majorAF.R -g $trios_files[$i] -t $list -gi $path\/$ran\_genome_info.txt -p $path\/${ran}_${outname}_output -w $win -s $step -m $missing -d $diff -n $thread_in\\n";
 		my $return = &pbs_setting("$cj_exc$local\-cj_quiet -cj_ppn $thread_in -cj_mem $mem -cj_conda $conda -cj_qname calculation_$i -cj_sn $ran -cj_qout . $out");
 		print BASH "$return\n";
 	}
@@ -320,9 +323,9 @@ unless ($ck_files && $ow == 0 && $rc == 0){
 
 #plotting
 $ck_files = "";
-$ck_files = `ls -l $path\/$ran\_output \| grep \"introgression_${diff}.pdf\"`;
+$ck_files = `ls -l $path\/${ran}_${outname}_output \| grep \"introgression_${diff}.pdf\"`;
 unless ($ck_files && $ow == 0 && $rp == 0){
-	$out = "Rscript intro_plot_2.R -p $path\/$ran\_output -d $diff -t $list -gi $path\/$ran\_genome_info.txt $ci\-p1c $p1c -p2c $p2c\\n";
+	$out = "Rscript intro_plot_2.R -p $path\/${ran}_${outname}_output -d $diff -t $list -gi $path\/$ran\_genome_info.txt $ci\-p1c $p1c -p2c $p2c\\n";
 	&pbs_setting("$cj_exc$local\-cj_quiet -cj_conda $conda -cj_qname plotting -cj_sn $ran -cj_qout . $out");
 	if ($exc == 1){
 		unless ($local){

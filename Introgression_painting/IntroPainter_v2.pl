@@ -67,6 +67,14 @@ for (my $i=0; $i<=$#ARGV; $i++){
 		}
         elsif (-e $ARGV[$i+1]){
             @vcfs = $ARGV[$i+1];
+            if ($ARGV[$i+1] =~ /\//){
+				my @tmps = split(/\//, $ARGV[$i+1]);
+				pop(@tmps);
+				$path_v = join("\/", @tmps);
+            }
+            else {
+            	$path_v = ".";
+            }
         }
 		else {
             die "-vcf: Cannot find the file\(s\).\n";
@@ -166,8 +174,11 @@ for (my $i=0; $i<=$#ARGV; $i++){
 	}
 }
 
-unless (@vcfs && $list){
+unless ($list && (@vcfs || $rp == 1)){
 	die "Not enough parameter is provided.\n";
+}
+if ($rc == 1 && !@vcfs){
+	die "-rcal: -vcf is required so existing trio-format files can be found.\n";
 }
 if ($rp == 1 || $rc == 1 || $ow == 1){
 	unless($ran){
@@ -175,17 +186,46 @@ if ($rp == 1 || $rc == 1 || $ow == 1){
 	}
 }
 
-RE:
-if ($ran){}
-else {
-	$ran = &rnd_str(4, "A".."Z", 0..9);
+mkdir "qsub_files" unless -d "qsub_files";
+mkdir "qsub_files\/out" unless -d "qsub_files\/out";
+
+unless (defined $ran) {
+    $ran = rnd_str2("$path");
 }
-if (-e "my_bash_introgression_1_$ran.sh" && $sn != 1){
-	$ran = undef;
-	goto RE;
+print "The qsub SN is: $ran\n";
+
+# Shared names used by normal, -rcal, and -rplot modes.
+my $output_tag = "${outname}_w${win}_s${step}_m${missing}_d${diff}";
+my $output_dir = "$path\/${ran}_${output_tag}_output";
+my $genome_info_file = "$path\/$ran\_genome_info.txt";
+
+if ($rp == 1){
+	unless (-e $genome_info_file){
+		die "-rplot: Cannot find genome info file $genome_info_file.\n";
+	}
+	unless (-d $output_dir){
+		die "-rplot: Cannot find output directory $output_dir.\n";
+	}
+	&run_plotting(1);
+	exit;
 }
 
-print "The serial number is: $ran\n";
+my @trios_files;
+if ($rc == 1){
+	unless (-e $genome_info_file){
+		die "-rcal: Cannot find genome info file $genome_info_file.\n";
+	}
+	unless ($path_v){
+		$path_v = ".";
+	}
+	@trios_files = sort <$path_v\/*.$ran.trios.gz>;
+	unless (@trios_files){
+		die "-rcal: Cannot find existing trio-format files matching $path_v\/*.$ran.trios.gz.\n";
+	}
+	&run_calculation(1);
+	&run_plotting(1);
+	exit;
+}
 
 #get genome information
 my @chrs = &chr_name($vcfs[0], $pre);
@@ -193,7 +233,7 @@ my @chr_lengths = &chr_lengths($vcfs[0], $pre);
 if (scalar(@chr_lengths) != scalar(@chrs)){
 	@chr_lengths = &chr_lengths($vcfs[0]);
 }
-open (INFO, ">$path\/$ran\_genome_info.txt") || die "Cannot write $path\/$ran\_genome_info.txt: $!\n";
+open (INFO, ">$genome_info_file") || die "Cannot write $genome_info_file: $!\n";
 print INFO "Chr\tLength\n";
 foreach my $i (0..$#chrs){
 	print INFO "$chrs[$i]\t$chr_lengths[$i]\n";
@@ -279,7 +319,6 @@ if ($exc == 1){
 @vcfs = @ck_vcfs;
 
 #convert vcf to trios format
-my @trios_files;
 open (BASH, ">my_bash_introgression_2_$ran.sh") || print "Cannot write my_bash_introgression_2_$ran.sh: $!\n";
 foreach my $i (0..$#vcfs){
 	my $trios_file_name = $vcfs[$i];
@@ -301,23 +340,31 @@ if ($exc == 1){
 }
 
 #do introgression calculation
-$outname = "${outname}_w${win}_s${step}_m${missing}_d${diff}";
-unless (-d "$path\/${ran}_${outname}_output"){
-	system("mkdir $path\/${ran}_${outname}_output");
-}
-my $ck_files = `ls -l $path\/${ran}_${outname}_output \| grep \"introgression_${diff}.rda\"`;
-if ($thread_in > 4){
-    $thread_in = 4;
-}
-if ($mem <= 24){
-    if ($thread_in > 2){
-        $thread_in = 2;
-    }
-}
-unless ($ck_files && $ow == 0 && $rc == 0){
+&run_calculation(0);
+
+#plotting
+&run_plotting(0);
+
+sub run_calculation {
+	my ($force) = @_;
+	unless (-d $output_dir){
+		system("mkdir $output_dir");
+	}
+	my $ck_files = `ls -l $output_dir \| grep \"introgression_${diff}.rda\"`;
+	if ($ck_files && $ow == 0 && $force == 0){
+		return;
+	}
+	if ($thread_in > 4){
+	    $thread_in = 4;
+	}
+	if ($mem <= 24){
+	    if ($thread_in > 2){
+	        $thread_in = 2;
+	    }
+	}
 	open (BASH, ">my_bash_introgression_3_$ran.sh") || print "Cannot write my_bash_introgression_3_$ran.sh: $!\n";
 	foreach my $i (0..$#trios_files){
-		$out = "Rscript new_intro_count_2_majorAF.R -g $trios_files[$i] -t $list -gi $path\/$ran\_genome_info.txt -p $path\/${ran}_${outname}_output -w $win -s $step -m $missing -d $diff -n $thread_in\\n";
+		$out = "Rscript new_intro_count_2_majorAF.R -g $trios_files[$i] -t $list -gi $genome_info_file -p $output_dir -w $win -s $step -m $missing -d $diff -n $thread_in\\n";
 		my $return = &pbs_setting("$cj_exc$local\-cj_quiet -cj_ppn $thread_in -cj_mem $mem -cj_conda $conda -cj_qname calculation_$i -cj_sn $ran -cj_qout . $out");
 		print BASH "$return\n";
 	}
@@ -331,11 +378,13 @@ unless ($ck_files && $ow == 0 && $rc == 0){
 	}
 }
 
-#plotting
-$ck_files = "";
-$ck_files = `ls -l $path\/${ran}_${outname}_output \| grep \"introgression_${diff}.pdf\"`;
-unless ($ck_files && $ow == 0 && $rp == 0){
-	$out = "Rscript intro_plot_2.R -p $path\/${ran}_${outname}_output -d $diff -t $list -gi $path\/$ran\_genome_info.txt $ci\-p1c $p1c -p2c $p2c\\n";
+sub run_plotting {
+	my ($force) = @_;
+	my $ck_files = `ls -l $output_dir \| grep \"introgression_${diff}.pdf\"`;
+	if ($ck_files && $ow == 0 && $force == 0){
+		return;
+	}
+	$out = "Rscript intro_plot_2.R -p $output_dir -d $diff -t $list -gi $genome_info_file $ci\-p1c $p1c -p2c $p2c\\n";
 	&pbs_setting("$cj_exc$local\-cj_quiet -cj_conda $conda -cj_qname plotting -cj_sn $ran -cj_qout . $out");
 	if ($exc == 1){
 		unless ($local){

@@ -1,4 +1,4 @@
-# Adzuki Bean Genomics Analysis Pipelines
+# Genomics Analysis Pipelines
 
 Automated and reproducible bioinformatics workflows for whole-genome sequencing (WGS), population genomics, and evolutionary analyses on high-performance computing (HPC) environments.
 

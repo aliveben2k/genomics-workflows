@@ -150,12 +150,13 @@ foreach my $vcf (@vcfs){
         my @eles = split(/\t/, $line);
         my @ele8 = split(/\:/, $eles[8]); #split FORMAT info
         my $cn;
-        foreach my $i (1..$#ele8){ #determine the position of DS in FORMAT column
+        foreach my $i (0..$#ele8){ #determine the position of CN in FORMAT column
             if ($ele8[$i] eq "CN"){
                 $cn = $i;
+                last;
             }
         }
-        unless ($cn){
+        unless (defined $cn){
             die "Cannot find the CN tag.\n";
         }
 		my $out_line; my @list_array; my @check;
@@ -178,11 +179,12 @@ foreach my $vcf (@vcfs){
             	}
             }
         }
-        $eles[7] =~ s/^END\=//i;
-        my @eles7_tmp = split(/\;/, $eles[7]);
-        $eles[7] = $eles7_tmp[0];
-        undef(@eles7_tmp);
-        print OUT "$eles[2]\t$eles[0]\t$eles[1]\t$eles[7]\t";
+        my ($end_pos) = grep { /^END=/i } split(/\;/, $eles[7]);
+        unless (defined $end_pos){
+            die "Cannot find the END tag for variant $eles[2].\n";
+        }
+        $end_pos =~ s/^END=//i;
+        print OUT "$eles[2]\t$eles[0]\t$eles[1]\t$end_pos\t";
         print OUT join("\t", @list_array), "\n";
         $cnt++;
         print "\rProcessing $vcf: $cnt CNVs done.";

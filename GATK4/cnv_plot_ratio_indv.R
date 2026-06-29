@@ -70,8 +70,7 @@ chr_len <- results %>% group_by(CONTIG) %>% summarise(chr_length=max(as.numeric(
 chr_pos <- chr_len %>% mutate(total = cumsum(as.numeric(chr_length)) - as.numeric(chr_length)) %>% select(-chr_length)
 results <- chr_pos %>% left_join(results, ., by="CONTIG") %>% arrange(CONTIG, as.numeric(START), as.numeric(END)) %>% mutate(BPcum=as.numeric(START+total), BPEcum=as.numeric(END)+total)
 X_axis <- results %>% group_by(CONTIG) %>% summarize(center=(max(BPEcum, na.rm = TRUE) + min(BPcum, na.rm = TRUE))/2)
-#max_y <- log2(max(results$LINEAR_COPY_RATIO, na.rm = TRUE))
-max_y <- 6
+max_y <- max(6, ceiling(max(results$LINEAR_COPY_RATIO, na.rm = TRUE)))
 
 #set colors 
 #nb.cols <- length(result_files)
@@ -103,4 +102,3 @@ man.plot <- ggplot() +
 tiff(paste0(path,".man_plot.tiff"), units = "in", pointsize = 12, res = 300, bg = "white", compression = c("none"), width = 16, height = 4)
 print(man.plot)
 dev.off()
-

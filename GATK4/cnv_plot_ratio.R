@@ -78,21 +78,10 @@ for (i in 1:length(result_files)){
   results$CONTIG <- gsub("0X", "X", results$CONTIG)
   results$CONTIG <- gsub("0Y", "Y", results$CONTIG)
   result.tables[[i]] <- results
-  if (i == 1){
-    chr_len <- results %>% group_by(CONTIG) %>% summarise(chr_length=max(as.numeric(END), na.rm = TRUE))
-  } else {
-    chr_len.tmp <- results %>% group_by(CONTIG) %>% summarise(chr_length=max(as.numeric(END), na.rm = TRUE))
-    for (k in 1:nrow(chr_len.tmp)){
-      for (l in 1:nrow(chr_len)){
-        if (chr_len.tmp[k,1] == chr_len[l,1]){
-          if (as.numeric(chr_len.tmp[k,2]) > as.numeric(chr_len[l,2])){
-            chr_len[l,2] <- chr_len.tmp[k,2]
-          }
-        }
-      }
-    }
-  }
 }
+chr_len <- bind_rows(result.tables) %>%
+  group_by(CONTIG) %>%
+  summarise(chr_length=max(as.numeric(END), na.rm = TRUE), .groups = "drop")
 chr_pos <- chr_len %>% mutate(total = cumsum(as.numeric(chr_length)) - as.numeric(chr_length)) %>% select(-chr_length)
 for (i in 1:length(result.tables)){
   result.tables[[i]] <- chr_pos %>% left_join(result.tables[[i]], ., by="CONTIG") %>% arrange(CONTIG, as.numeric(START), as.numeric(END)) %>% mutate(BPcum=as.numeric(START+total), BPEcum=as.numeric(END)+total)
@@ -104,7 +93,7 @@ for (i in 1:length(result.tables)){
   merged.table <- rbind(merged.table, result.tables[[i]])
 }
 X_axis <- merged.table %>% group_by(CONTIG) %>% summarize(center=(max(BPEcum, na.rm = TRUE) + min(BPcum, na.rm = TRUE))/2)
-max_y <- 6
+max_y <- max(6, ceiling(max(merged.table$LINEAR_COPY_RATIO, na.rm = TRUE)))
 
 #set colors 
 #nb.cols <- length(result_files)
@@ -137,4 +126,3 @@ man.plot <- man.plot +
 tiff(paste0(path,".man_plot.tiff"), units = "in", pointsize = 12, res = 300, bg = "white", compression = c("none"), width = 16, height = 4)
 print(man.plot)
 dev.off()
-

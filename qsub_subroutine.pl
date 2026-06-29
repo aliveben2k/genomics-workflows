@@ -2,7 +2,7 @@
 #list fo the function: pbs_setting, status, get_1_eles, chr_name, chr_lengths, sample_name, check_path, rnd_str, name_exists_in_dir...... 
 
 =functions for pbs_setting
-[-cj_local] [-cj_env PATH] [-cj_conda ENV_NAME] [-cj_node INT] [-cj_ppn INT] [-cj_mem INT] [-cj_qname JOB_NAME] [-cj_proj PROJECT_ID] [-cj_module MODULE] [-cj_docker PATH] [-cj_qout PATH] [-cj_sn SN] [-cj_exc] [-cj_quiet] [-cj_queue QUEUE_NAME] [-cj_mail EMAIL_ADDRESS]
+[-cj_local] [-cj_env PATH] [-cj_conda ENV_NAME] [-cj_node INT] [-cj_ppn INT] [-cj_mem INT] [-cj_qname JOB_NAME] [-cj_proj PROJECT_ID] [-cj_module MODULE] [-cj_docker PATH] [-cj_qout PATH] [-cj_sn SN] [-cj_exc] [-cj_quiet] [-cj_queue QUEUE_NAME] [-cj_mail EMAIL_ADDRESS] [-cj_server FILE]
 -cj_local	Run the script locally.
 -cj_env		Environment path that need to be set in $PATH. Can be used for multiple times.
 -cj_conda	Conda environment name. Only works for h71 and h81 servers.
@@ -21,6 +21,7 @@
 -cj_mail	E-mail address. It will send the notice when the job starts and is done. Only works for Taiwania 1.
 -cj_exc		Send the job for execution.
 -cj_quiet	Supress the message.
+-cj_server	Server description file. Format: IP_ADDRESS_OR_PREFIX SERVER_TYPE.
 =cut
 
 =functions for rnd_str (for old program)
@@ -86,6 +87,93 @@ function: change relative path to absolute path
 use Term::ANSIColor qw(:constants);
 use Cwd qw(getcwd);
 
+our $SERVER_DESCRIPTION_FILE;
+
+sub _server_type {
+	my $type = lc(shift // "");
+	$type =~ s/[\s-]+/_/g;
+	my %types = (
+		pbs => [1, "pbs"],
+		pbs_pro => [2, "pbs_pro"],
+		ntu => [2, "pbs_pro"],
+		slurm => [3, "slurm"],
+		taiwania => [3, "slurm"],
+		pbs_special => [4, "pbs_special"],
+		naro => [4, "pbs_special"],
+		sge => [4, "pbs_special"],
+		slurm_scion => [5, "slurm_scion"],
+		scion => [5, "slurm_scion"],
+	);
+	return unless exists $types{$type};
+	return @{$types{$type}};
+}
+
+sub _local_ip_addresses {
+	my @ips;
+	if (open(my $fh, "-|", "ip", "route", "get", "1.2.3.4")){
+		while (my $line = <$fh>){
+			push(@ips, $1) if $line =~ /\bsrc\s+(\S+)/;
+		}
+		close($fh);
+	}
+	return @ips;
+}
+
+sub detect_server {
+	my $description_file = shift;
+	my $home = (getpwuid $>)[7];
+	$description_file ||= $SERVER_DESCRIPTION_FILE;
+	$description_file ||= $ENV{"QSUB_SERVER_DESCRIPTION"};
+	$description_file ||= "$home/.qsub_server.conf" if -e "$home/.qsub_server.conf";
+
+	my @rules;
+	if ($description_file){
+		open(my $fh, "<", $description_file) or die "Cannot open server description file $description_file: $!\n";
+		my $line_number = 0;
+		while (my $line = <$fh>){
+			$line_number++;
+			chomp($line);
+			$line =~ s/\r$//;
+			$line =~ s/#.*$//;
+			$line =~ s/^\s+|\s+$//g;
+			next unless length($line);
+			my ($ip_pattern, $type, @extra) = split(/[\t,\s]+/, $line);
+			next if $ip_pattern =~ /^IP(?:_ADDRESS|_PREFIX)?$/i && $type =~ /^SERVER_TYPE$/i;
+			die "Invalid server description at $description_file line $line_number.\n" if !$type || @extra;
+			my ($serv, $canonical_type) = _server_type($type);
+			die "Unknown server type '$type' at $description_file line $line_number.\n" unless defined $serv;
+			push(@rules, [$ip_pattern, $serv, $canonical_type]);
+		}
+		close($fh);
+		die "No server mappings found in $description_file.\n" unless @rules;
+		$SERVER_DESCRIPTION_FILE = $description_file;
+	}
+	else {
+		@rules = (
+			["172.28.111", 3, "slurm"],
+			["150.26.186", 5, "slurm_scion"],
+			["140.112.2", 2, "pbs_pro"],
+			["150.26.179", 4, "pbs_special"],
+		);
+	}
+
+	my @ips = _local_ip_addresses();
+	foreach my $rule (@rules){
+		my ($ip_pattern, $serv, $canonical_type) = @{$rule};
+		if ($ip_pattern eq "*"){
+			return ($serv, $canonical_type, $ips[0] // "unknown", $description_file);
+		}
+		foreach my $ip (@ips){
+			if ($ip =~ /^\Q$ip_pattern\E(?:\.|$)/){
+				return ($serv, $canonical_type, $ip, $description_file);
+			}
+		}
+	}
+	my $source = $description_file ? " in $description_file" : "";
+	my $detected = @ips ? join(", ", @ips) : "none";
+	die "Cannot match local IP address ($detected) to a server type$source.\n";
+}
+
 sub pbs_setting {
 my $arg = shift;
 my @args = split(/\s/, $arg);
@@ -95,9 +183,17 @@ my $mem = 0; #set memory used for qsub job; 0 means no memory defined.
 my $gpu = 0; #set the GPU usage;
 my $home1 = (getpwuid $>)[7]; #get the $HOME path
 
-my @server = `ip route get 1.2.3.4 \| awk \'\{print \$7\}\'`;
-chomp(@server);
-my $serv = -1;
+my $description_file;
+for (my $i=0; $i<=$#args; $i++){
+	if ($args[$i] eq "-cj_server"){
+		die "-cj_server requires a description file.\n" unless $args[$i+1];
+		$description_file = $args[$i+1];
+		$args[$i] = "";
+		$args[$i+1] = "";
+		last;
+	}
+}
+my ($serv, $server_type, $server_ip) = detect_server($description_file);
 my $scr_dir = '#PBS'; 
 my $par = '-q'; #which job class to use
 my $snode; #node to use
@@ -112,14 +208,9 @@ my $otype = '-j oe';
 my $naro_server = 'hostos_c1';
 my $docker = '';
 
-foreach (@server){
-	#if ($_ =~ /<PBS_server_IP>/){ #PBS system
-	#	$serv = 1;
-	#}
-    if ($_ =~ /XXX.XXX.XXX/){ #Slurm system
-		$serv = 3;
-		$scr_dir = '#SBATCH';
-		$par = '-p';
+if ($serv == 3){ #Slurm system
+			$scr_dir = '#SBATCH';
+			$par = '-p';
 		$snode = '-N ';
 		$wall = '-t ';
 		$jenv = '--export=ALL';
@@ -127,12 +218,11 @@ foreach (@server){
 		$mtype = '-–mail-type=ALL';
 		$jn = '-J '; #job name
 		$sppn = '--ntasks-per-node=';
-		$pname = '-A ';
-		$otype = '';
-	}
-    if ($_ =~ /XXX.XXX.XXX/){ #Specialized Slurm system
-		$serv = 5;
-		$scr_dir = '#SBATCH';
+			$pname = '-A ';
+			$otype = '';
+}
+elsif ($serv == 5){ #Scion-style Slurm system
+			$scr_dir = '#SBATCH';
 		$par = '--partition';
 		$snode = '--nodes=';
 		$wall = '--time=';
@@ -141,21 +231,16 @@ foreach (@server){
 		$mtype = '-–mail-type=ALL';
 		$jn = '--job-name '; #job name
 		$sppn = '--ntasks-per-node=';
-		#$pname = '-A ';
-		$otype = '';
-	}
-	elsif ($_ =~ /XXX.XXX.XXX/) { #PBSpro system (default)
-		$serv = 2;
-	}
-	elsif ($_ =~ /XXX.XXX.XXX/){ #SEG system
-		$serv = 4;
-		$scr_dir = '#$';
+			#$pname = '-A ';
+			$otype = '';
+}
+elsif ($serv == 4){ #NARO-style PBS_special system
+			$scr_dir = '#$';
 		$par = '-jc';
 		$jenv = '-cwd';
 		$wall = '-mods l_hard h_rt ';
-		$otype = '-j y';
-		$jn = '-N ';
-	}
+			$otype = '-j y';
+			$jn = '-N ';
 }
 
 if ($#args == -1){
@@ -1062,34 +1147,17 @@ sub status {
 	    my @tmp = split(/\//, $home);
 	    $uid = $tmp[-1];
 	}
-	#my @server = `ip route get 1.2.3.4 \| awk \'\{print \$7\}\'`;
-	my @server;
-    open(my $fh, "-|", "ip", "route", "get", "1.2.3.4") or die $!; 
-    while (my $line = <$fh>) {
-        if ($line =~ /\bsrc\s+(\S+)/) {
-            push @server, $1;
-        }
-    }
-    close($fh);
-	chomp(@server);
-	my $serv;
-	foreach (@server){
-    	if ($_ =~ /172.28.111/ || $_ =~ /150.26.186/){ #Taiwania 3 or Scion
-			$serv = 1;
-			last;
+		my ($configured_serv) = detect_server();
+		my $serv;
+		if ($configured_serv == 3 || $configured_serv == 5){
+			$serv = 1; #Slurm
 		}
-		elsif ($_ =~ /140.112.2/) { #NTU servers
-			$serv = 2;
-			last;
-		}
-		elsif ($_ =~ /150.26.179/) { #NARO servers
-			$serv = 3;
-			last;
+		elsif ($configured_serv == 4){
+			$serv = 3; #NARO PBS_special
 		}
 		else {
-			$serv = 1;
+			$serv = 2; #PBS/PBS Pro
 		}
-	}
 	print "\[$time\]\: Press ctrl \+ c to terminate this script.\n";
 	print "\[$time\]\: WARNING: If you terminate this script, the following qsub job\(s\)\/step\(s\) will not be generated and executed. If you run this script in background using \"nohup\", you can ignore this message.\n";
 	print "\[$time\]\: Looking for $ran job\(s\)...\n";

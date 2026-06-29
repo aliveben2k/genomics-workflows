@@ -1,8 +1,8 @@
 #!/usr/bin/perl
-#Usage: perl create_job.pl COMMAND_LINE [-cj_help] [-cj_env PATH] [-cj_conda ENV_NAME] [-cj_node INT] [-cj_ppn INT] [-cj_mem INT] [-cj_qname JOB_NAME] [-cj_queue QUEUE_NAME] [-cj_proj PROJECT_ID] [-cj_module MODULE] [-cj_docker PATH] [-cj_mail EMAIL_ADDRESS] [-cj_qout PATH] [-cj_sn SN] [-cj_exc]
+#Usage: perl create_job.pl COMMAND_LINE [-cj_help] [-cj_env PATH] [-cj_conda ENV_NAME] [-cj_node INT] [-cj_ppn INT] [-cj_mem INT] [-cj_qname JOB_NAME] [-cj_queue QUEUE_NAME] [-cj_proj PROJECT_ID] [-cj_module MODULE] [-cj_docker PATH] [-cj_mail EMAIL_ADDRESS] [-cj_qout PATH] [-cj_sn SN] [-cj_server FILE] [-cj_exc]
 
 =functions for pbs_setting
-[-cj_local] [-cj_env PATH] [-cj_conda ENV_NAME] [-cj_node INT] [-cj_ppn INT] [-cj_mem INT] [-cj_qname JOB_NAME] [-cj_proj PROJECT_ID] [-cj_module MODULE] [-cj_qout PATH] [-cj_sn SN] [-cj_exc] [-cj_quiet] [-cj_queue QUEUE_NAME] [-cj_mail EMAIL_ADDRESS]
+[-cj_local] [-cj_env PATH] [-cj_conda ENV_NAME] [-cj_node INT] [-cj_ppn INT] [-cj_mem INT] [-cj_qname JOB_NAME] [-cj_proj PROJECT_ID] [-cj_module MODULE] [-cj_qout PATH] [-cj_sn SN] [-cj_server FILE] [-cj_exc] [-cj_quiet] [-cj_queue QUEUE_NAME] [-cj_mail EMAIL_ADDRESS]
 -cj_local	Run the script locally.
 -cj_env		Environment path that need to be set in $PATH. Can be used for multiple times.
 -cj_conda	Conda environment name. Only works for h71 and h81 servers.
@@ -20,6 +20,7 @@
 -cj_mail	E-mail address. It will send the notice when the job starts and is done. Only works for Taiwania 1.
 -cj_exc		Send the job for execution.
 -cj_quiet	Supress the message.
+-cj_server	Server description file. Format: IP_ADDRESS_OR_PREFIX SERVER_TYPE.
 =cut
 
 use Cwd qw(getcwd);
@@ -27,8 +28,11 @@ use FindBin;
 use Term::ANSIColor qw(:constants);
 my $home = (getpwuid $>)[7];
 
-if (-e "$home\/softwares\/qsub_subroutine.pl"){
-	require "$home\/softwares\/qsub_subroutine.pl";
+if (-e "$home\/software\/qsub_subroutine.pl"){
+		require "$home\/software\/qsub_subroutine.pl";
+}
+elsif (-e "$home\/softwares\/qsub_subroutine.pl"){
+		require "$home\/softwares\/qsub_subroutine.pl";
 }
 elsif (-e "$home\/qsub_subroutine.pl"){
 	require "$home\/qsub_subroutine.pl";
@@ -41,35 +45,25 @@ else {
 chomp(@ARGV);
 print "This script is written by Ben Chien. Apr.2022\n";
 
-my @server = `ip route get 1.2.3.4 \| awk \'\{print \$7\}\'`;
-chomp(@server);
-my $serv = -1;
-foreach (@server){
-	if ($_ =~ /XXX.XXX.XXX/){
-		$serv = 2;
-		print BOLD "Set to the server\'s PBS job setting.\n\n", RESET;
-	}
-    if ($_ =~ /XXX.XXX.XXX/){
-		$serv = 3;
-		print BOLD "Set to the server\'s Slurm job setting.\n\n", RESET;
-	}
-	if ($_ =~ /XXX.XXX.XXX/){
-		$serv = 4;
-		print BOLD "Set to the server\'s PBS_special job setting.\n\n", RESET;
-	}
-}
-if ($serv == -1){
-	print "Cannot find the right server.\n";
-	exit;
-}
 &usage;
 if ($#ARGV == -1){
 	exit;
 }
+my $description_file;
+for (my $i=0; $i<=$#ARGV; $i++){
+	if ($ARGV[$i] eq "-cj_server"){
+		die "-cj_server requires a description file.\n" unless $ARGV[$i+1];
+		$description_file = $ARGV[$i+1];
+		last;
+	}
+}
+my ($serv, $server_type, $server_ip, $server_source) = detect_server($description_file);
+my $source_message = $server_source ? " using $server_source" : " using built-in defaults";
+print BOLD "Server type $server_type is selected for IP $server_ip$source_message.\n\n", RESET;
 print "Input command line:\nperl create_job.pl @ARGV\n";
 
 my $exc; my @envs; my $ran; my $proj; my $mail; my $query; my $user_queue;
-my $qname; my $conda; my @module; my $qout; my $local;
+my $qname; my $conda; my @module; my $qout; my $local; my $server_config;
 for (my $i=0;$i<=$#ARGV;$i++){
 	if ($ARGV[$i] eq "\-cj_exc"){
 		$exc = "-cj_exc ";
@@ -192,23 +186,28 @@ for (my $i=0;$i<=$#ARGV;$i++){
 		$ARGV[$i] = "";
 		$ARGV[$i+1] = "";
 	}
-	if ($ARGV[$i] eq "\-cj_docker"){
-		$docker = "-cj_docker $ARGV[$i+1] ";
-		$ARGV[$i] = "";
-		$ARGV[$i+1] = "";
-	}
+		if ($ARGV[$i] eq "\-cj_docker"){
+			$docker = "-cj_docker $ARGV[$i+1] ";
+			$ARGV[$i] = "";
+			$ARGV[$i+1] = "";
+		}
+		if ($ARGV[$i] eq "\-cj_server"){
+			$server_config = "-cj_server $ARGV[$i+1] ";
+			$ARGV[$i] = "";
+			$ARGV[$i+1] = "";
+		}
 }
 
 my $c_line = join(" ", @ARGV);
 $c_line =~ s/^\s+|\s+$//;
 
-&pbs_setting("$proj$local@envs$conda$docker$ppn$mem$nodes$ran$mail$qout$query$user_queue$qname@module$exc$c_line");
+&pbs_setting("$server_config$proj$local@envs$conda$docker$ppn$mem$nodes$ran$mail$qout$query$user_queue$qname@module$exc$c_line");
 #print "debug1: $proj$local@envs$conda$docker$ppn$mem$nodes$ran$mail$qout$query$user_queue$qname@module$exc$c_line\n";
 
 sub usage {
-	print BOLD "Usage: perl create_job.pl COMMAND_LINE [-cj_help] [-cj_env PATH] [-cj_conda ENV_NAME] [-cj_node INT] [-cj_ppn INT] [-cj_mem INT] [-cj_qname JOB_NAME] [-cj_queue QUEUE_NAME] [-cj_proj PROJECT_ID] [-cj_module MODULE] [-cj_qout PATH] [-cj_sn SN] [-cj_mail EMAIL_ADDRESS] [-cj_exc]\n", RESET;
-	print "This script can detect which server you are using and use its setting.\n";
-	print "Only gc3, h71, h81 and Taiwania 1 servers are supported.\n";
+	print BOLD "Usage: perl create_job.pl COMMAND_LINE [-cj_help] [-cj_env PATH] [-cj_conda ENV_NAME] [-cj_node INT] [-cj_ppn INT] [-cj_mem INT] [-cj_qname JOB_NAME] [-cj_queue QUEUE_NAME] [-cj_proj PROJECT_ID] [-cj_module MODULE] [-cj_qout PATH] [-cj_sn SN] [-cj_mail EMAIL_ADDRESS] [-cj_server FILE] [-cj_exc]\n", RESET;
+	print "The server can be selected from -cj_server FILE, QSUB_SERVER_DESCRIPTION, or ~/.qsub_server.conf.\n";
+	print "Description format: IP_ADDRESS_OR_PREFIX SERVER_TYPE. Types: pbs, pbs_pro, slurm, pbs_special, slurm_scion.\n";
 	print "-cj_conda only supports h71 and h81 servers.\n";
 	print "-cj_env supports all servers, and conda env path can be set here for gc3 and Taiwania 1.\n";
 	print "If -cj_qname is set, job name is random serial number + job name. Default job name is \"cj\".\n";
@@ -235,5 +234,6 @@ sub help {
 	print "-cj_qout\tThe output path where the job execution info should be stored.\n";
 	print "-cj_sn\t\tSerial number \{SN\} of the job. Default: 4-digit random characters.\n";
 	print "-cj_mail\tE-mail address. It will send the notice when the job starts and is done.\n";
+	print "-cj_server\tServer description file. Format: IP_ADDRESS_OR_PREFIX SERVER_TYPE.\n";
 	print "-cj_exc\t\tSend the job for execution.\n";
 }

@@ -677,7 +677,7 @@ if ($gpu == 1){
 
 #check step 6 arguments
 if ($mmc ne "0"){
-	$mm = 'N_MISSING < $mmc';
+	$mm = "N_MISSING < $mmc";
 }
 
 #check CNV requirements and choose cohort/case mode
@@ -2793,8 +2793,10 @@ sub bi_allele {
 		$filtered = "star_filtered";
 	}	
 	my @files = <$folder\/select_vcf_$filtered\_*.gz>;
+	my $input_folder = $folder;
 	if ($files[0] !~ /[a-z]/i && $exc){
 		@files = <$path_o\/select_vcf_$filtered\_*.gz>;
+		$input_folder = $path_o if $files[0] =~ /[a-z]/i;
 	}
 	my $sel = "select_";
 	#check bcftools
@@ -2809,8 +2811,10 @@ sub bi_allele {
 	
 	if ($files[0] !~ /[a-z]/i && $exc){
 		@files = <$folder\/vcf_$filtered\_*.gz>;
+		$input_folder = $folder;
 		if ($files[0] !~ /[a-z]/i && $exc){
 			@files = <$path_o\/vcf_$filtered\_*.gz>;
+			$input_folder = $path_o if $files[0] =~ /[a-z]/i;
 		}
 		$sel = "";
 	}
@@ -2823,11 +2827,11 @@ sub bi_allele {
 	chomp(@files);
 	my @chrs;
 	if ($gv =~ /4|5/ || $ns eq "1"){
-		if (-e "$folder\/$sel\vcf_$filtered\_all\.vcf\.gz" || $exc ne "-cj_exc "){
+		if (-e "$input_folder\/$sel\vcf_$filtered\_all\.vcf\.gz" || $exc ne "-cj_exc "){
 			@chrs = ("all");
 		}
 		else {
-			print BOLD "\[$time\]\: ERROR\: Cannot find $folder\/$sel\vcf_$filtered\_all\.vcf\.gz file.", RESET, "\n";
+			print BOLD "\[$time\]\: ERROR\: Cannot find $input_folder\/$sel\vcf_$filtered\_all\.vcf\.gz file.", RESET, "\n";
 			return 2;
 		}
 	}
@@ -2840,12 +2844,13 @@ sub bi_allele {
 			else {
 				@chrs = &check_chrs($path_o, $ref, $pre);
 			}
-		}
-		else {
-			foreach my $file (@files){
-				if ($file =~ /$sel\$filtered\_all\.vcf\.gz/){
-					next();
-				}
+			}
+			else {
+				foreach my $file (@files){
+					my $all_file = "${sel}vcf_${filtered}_all.vcf.gz";
+					if ($file =~ /\Q$all_file\E$/){
+						next();
+					}
 				if ($file =~ /$folder/){
 					$file =~ s/$folder//g;
 				}
@@ -2864,54 +2869,40 @@ sub bi_allele {
 	unless ($local){
 		open (BASH, ">my_bash_06_$ran\.sh") || die BOLD "\[$time\]\: ERROR\: Cannot write my_bash_06_$ran\.sh: $!", RESET, "\n";
 	}
+	my $ri_opt = $ri eq "0" ? "" : $ri;
+	my $ba_opt = $ba eq "0" ? "" : $ba;
+	my $fma_opt = $fma eq "-M2 " ? $fma : "";
+	$ba_opt = "" if $fma_opt;
+	my $mm_opt = $mm eq "0" ? "" : $mm;
+	my $minQ_opt = $minQ eq "0" ? "" : $minQ;
+	my $keep_opt = $keep eq "0" ? "" : $keep;
+	my $filter;
+	if ($mm_opt && $minQ_opt){
+		$filter = "-i \'$mm_opt \&\& $minQ_opt\' ";
+	}
+	elsif ($mm_opt){
+		$filter = "-i \'$mm_opt\' ";
+	}
+	elsif ($minQ_opt){
+		$filter = "-i \'$minQ_opt\' ";
+	}
 	foreach my $chr (@chrs){
 		my $out;
-		if (-e "$folder\/$sel\vcf_passed_$chr\.vcf\.gz"){
+		my $passed_vcf = "$folder\/${sel}vcf_passed_$chr\.vcf\.gz";
+		if (-e $passed_vcf && -e "$passed_vcf\.tbi"){
 			if ($ow eq "0"){
-				print "\[$time\]\: WARNING\: $folder\/$sel\vcf_passed_$chr\.vcf\.gz exists. Skip further filtering by vcftools.\n";
+				print "\[$time\]\: WARNING\: $passed_vcf and its index exist. Skip further filtering by bcftools.\n";
 				next();
 			}
 			elsif ($ow eq "1"){
-				$out = "rm $folder\/$sel\vcf_passed_$chr\.vcf\.gz\\n";
+				$out = "rm -f $passed_vcf $passed_vcf\.tbi\\n";
 			}
 		}
-		if ($ri eq "0"){
-			$ri = "";
+		elsif (-e $passed_vcf || -e "$passed_vcf\.tbi"){
+			print "\[$time\]\: WARNING\: $passed_vcf is incomplete because the VCF or its index is missing. Regenerate it.\n";
+			$out = "rm -f $passed_vcf $passed_vcf\.tbi\\n";
 		}
-		if ($ba eq "0"){
-			$ba = "";
-		}
-		if ($fma eq "-M2 "){ #if use "-M2", than turn off "-m2 -M2"
-		    $ba = "";
-		    if (defined $ri){
-		        $ri = "-e \'TYPE\=\"indel\"\' ";
-		    }
-		}
-		else {
-		    $fma = "";
-		}
-		if ($mm eq "0"){
-			$mm = "";
-		}
-		if ($minQ eq "0"){
-			$minQ = "";
-		}
-		if ($keep eq "0"){
-			$keep = "";
-		}
-		my $filter;
-		if ($mm || $minQ){
-		    if ($mm && $minQ){
-		        $filter = "-i \'$mm \&\& $minQ\' ";
-		    }
-		    elsif ($mm){
-		        $filter = "-i \'$mm\' ";
-		    }
-		    else {
-		        $filter = "-i \'$minQ\' ";
-		    }
-		}
-		$out .= "bcftools view $ri$ba$fma$maf$keep$filter\--threads 8 -W\=tbi -Oz -o $folder\/$sel\vcf_passed_$chr\.vcf\.gz $folder\/$sel\vcf_$filtered\_$chr\.vcf\.gz\\n";
+		$out .= "bcftools view $ri_opt$ba_opt$fma_opt$maf$keep_opt$filter\--threads 8 -W\=tbi -Oz -o $passed_vcf $input_folder\/${sel}vcf_$filtered\_$chr\.vcf\.gz\\n";
 		#$out .= "vcftools \-\-gzvcf $folder\/$sel\vcf_$filtered\_$chr\.vcf\.gz $ri$ba$mm$minQ$maf$keep\-\-recode \-\-recode\-INFO\-all \-\-stdout \| bgzip -c \> $folder\/$sel\vcf_passed_$chr\.vcf\.gz\\n";
 		my $return = &pbs_setting("$proj$exc$local\-cj_quiet -cj_ppn 8 -cj_qname gatk_06_$chr -cj_sn $ran -cj_qout . $out");
 		print BASH "$return\n";

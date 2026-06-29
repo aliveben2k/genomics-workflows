@@ -51,6 +51,7 @@ The repository was extensively used in population genomics studies, including:
 * PBS
 * PBS Pro
 * Slurm
+* SGE
 
 Most pipelines utilize custom job submission utilities:
 

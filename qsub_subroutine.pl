@@ -125,6 +125,8 @@ sub detect_server {
 	$description_file ||= $SERVER_DESCRIPTION_FILE;
 	$description_file ||= $ENV{"QSUB_SERVER_DESCRIPTION"};
 	$description_file ||= "$home/.qsub_server.conf" if -e "$home/.qsub_server.conf";
+	$description_file ||= "$home/software/qsub_server.conf" if -e "$home/software/qsub_server.conf";
+	$description_file ||= "qsub_server.conf" if -e "qsub_server.conf";
 
 	my @rules;
 	if ($description_file){

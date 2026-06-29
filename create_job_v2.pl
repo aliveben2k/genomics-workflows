@@ -206,7 +206,7 @@ $c_line =~ s/^\s+|\s+$//;
 
 sub usage {
 	print BOLD "Usage: perl create_job.pl COMMAND_LINE [-cj_help] [-cj_env PATH] [-cj_conda ENV_NAME] [-cj_node INT] [-cj_ppn INT] [-cj_mem INT] [-cj_qname JOB_NAME] [-cj_queue QUEUE_NAME] [-cj_proj PROJECT_ID] [-cj_module MODULE] [-cj_qout PATH] [-cj_sn SN] [-cj_mail EMAIL_ADDRESS] [-cj_server FILE] [-cj_exc]\n", RESET;
-	print "The server can be selected from -cj_server FILE, QSUB_SERVER_DESCRIPTION, or ~/.qsub_server.conf.\n";
+	print "The server can be selected from -cj_server FILE, QSUB_SERVER_DESCRIPTION, ~/.qsub_server.conf, ~/software/qsub_server.conf, or ./qsub_server.conf.\n";
 	print "Description format: IP_ADDRESS_OR_PREFIX SERVER_TYPE. Types: pbs, pbs_pro, slurm, pbs_special, slurm_scion.\n";
 	print "-cj_conda only supports h71 and h81 servers.\n";
 	print "-cj_env supports all servers, and conda env path can be set here for gc3 and Taiwania 1.\n";

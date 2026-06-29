@@ -116,7 +116,7 @@ foreach (@server){
 	#if ($_ =~ /<PBS_server_IP>/){ #PBS system
 	#	$serv = 1;
 	#}
-    if ($_ =~ /172.28.111/){ #Taiwania 3, Slurm system
+    if ($_ =~ /XXX.XXX.XXX/){ #Slurm system
 		$serv = 3;
 		$scr_dir = '#SBATCH';
 		$par = '-p';
@@ -130,7 +130,7 @@ foreach (@server){
 		$pname = '-A ';
 		$otype = '';
 	}
-    if ($_ =~ /150.26.186/){ #Scion, Slurm system
+    if ($_ =~ /XXX.XXX.XXX/){ #Specialized Slurm system
 		$serv = 5;
 		$scr_dir = '#SBATCH';
 		$par = '--partition';
@@ -144,10 +144,10 @@ foreach (@server){
 		#$pname = '-A ';
 		$otype = '';
 	}
-	elsif ($_ =~ /140.112.2/) { #PBS_pro system (default)
+	elsif ($_ =~ /XXX.XXX.XXX/) { #PBSpro system (default)
 		$serv = 2;
 	}
-	elsif ($_ =~ /150.26.179/){ #Japan NARO server
+	elsif ($_ =~ /XXX.XXX.XXX/){ #SEG system
 		$serv = 4;
 		$scr_dir = '#$';
 		$par = '-jc';

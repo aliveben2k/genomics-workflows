@@ -309,7 +309,7 @@ docs/arguments.md
 
 If you use this pipeline in your research, please cite:
 
-Chien, C.-C. et al.
+Chien, C.-C., Seiko, T., Muto, C., Ariga, H., Wang, Y.-C., Chang, C.-H., Sakai, H., Naito, K., & Lee, C.-R. (2025). *A single domestication origin of adzuki bean in Japan and the evolution of domestication genes*. **Science, 388**(6750), eads2871. https://doi.org/10.1126/science.ads2871
 
 ---
 

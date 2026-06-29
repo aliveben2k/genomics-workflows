@@ -25,6 +25,7 @@ The repository was extensively used in population genomics studies, including:
 * Modular pipeline structure
 * Designed for large-scale WGS datasets
 * Extensive use in published peer-reviewed studies
+* Configuration-driven deployment across multiple HPC environments
 
 ---
 
@@ -42,6 +43,30 @@ create_job.pl
 ```
 
 to automatically generate and submit jobs to HPC clusters.
+
+The workflow framework supports configuration-driven deployment across multiple HPC environments through a user-defined configuration file (`qsub_server.conf`).
+
+The server configuration file can be provided in one of the following ways (listed in order of priority):
+
+1. Explicitly specify the configuration file using the `-cj_server` argument in `create_job_v2.pl`:
+
+```bash
+perl create_job_v2.pl -cj_server /path/to/qsub_server.conf
+```
+
+2. Place the configuration file at:
+
+```text
+$HOME/software/qsub_server.conf
+```
+
+3. Place the configuration file in the current working directory:
+
+```text
+./qsub_server.conf
+```
+
+This configuration mechanism allows the same workflow to be easily deployed across different HPC clusters without modifying the source code.
 
 ---
 

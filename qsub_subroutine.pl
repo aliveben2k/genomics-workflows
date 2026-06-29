@@ -1,9 +1,8 @@
 #!/usr/bin/perl
-
-#list fo the function: pbs_setting, status, get_1_eles, chr_name, chr_lengths, sample_name, check_path, rnd_str
+#list fo the function: pbs_setting, status, get_1_eles, chr_name, chr_lengths, sample_name, check_path, rnd_str, name_exists_in_dir...... 
 
 =functions for pbs_setting
-[-cj_local] [-cj_env PATH] [-cj_conda ENV_NAME] [-cj_node INT] [-cj_ppn INT] [-cj_mem INT] [-cj_qname JOB_NAME] [-cj_proj PROJECT_ID] [-cj_module MODULE] [-cj_qout PATH] [-cj_sn SN] [-cj_exc] [-cj_quiet] [-cj_queue QUEUE_NAME] [-cj_mail EMAIL_ADDRESS]
+[-cj_local] [-cj_env PATH] [-cj_conda ENV_NAME] [-cj_node INT] [-cj_ppn INT] [-cj_mem INT] [-cj_qname JOB_NAME] [-cj_proj PROJECT_ID] [-cj_module MODULE] [-cj_docker PATH] [-cj_qout PATH] [-cj_sn SN] [-cj_exc] [-cj_quiet] [-cj_queue QUEUE_NAME] [-cj_mail EMAIL_ADDRESS]
 -cj_local	Run the script locally.
 -cj_env		Environment path that need to be set in $PATH. Can be used for multiple times.
 -cj_conda	Conda environment name. Only works for h71 and h81 servers.
@@ -11,10 +10,12 @@
 -cj_ppn		Core that will be used in the job. Default: 1.
 -cj_time	walltime of the job. Default: system default.
 -cj_mem		Momory that will be used in the job. Default: system default.
+-cj_gpu		GPU to use. (NARO server only)
 -cj_qname	Name of the job, if defined, the job name will be {SN}_{job_name}. Default: {SN}_cj
 -cj_queue	Select queue for the job. Only works for Taiwania 1.
 -cj_proj	ID of the project. Only works for Taiwania 1.
 -cj_module	A module that need to be loaded. Can be used for multiple times.
+-cj_docker  docker image path. Only works for NARO's server. 
 -cj_qout	The output path where the job execution info should be stored.
 -cj_sn		Serial number {SN} of the job. Default: 4-digit random characters.
 -cj_mail	E-mail address. It will send the notice when the job starts and is done. Only works for Taiwania 1.
@@ -22,12 +23,27 @@
 -cj_quiet	Supress the message.
 =cut
 
-=functions for rnd_str
+=functions for rnd_str (for old program)
 input: none
 main function: generate a four-character serial number
 =cut
 
-=functions for status_tw3
+=functions for name_exists_in_dir
+input: path($dir), serial_number($ran)
+main function: check if the $ran already exists
+=cut
+
+=functions for rnd_str2 (for new program)
+input: path($dir)
+main function: generate a four-character serial number and check if the serial number exists
+=cut
+
+our @QUERY_RETRY_SLEEPS = ([30, 60], [60, 120], [120, 180]);
+our @SUBMIT_RETRY_SLEEPS = ([60, 120], [120, 180], [180, 240]);
+our @QUEUE_BUSY_SLEEPS = ([120, 180], [180, 300], [300, 420]);
+our @ACTIVE_JOB_SLEEPS = ([90, 150], [180, 300], [300, 420]);
+
+=functions for status_slurm
 input: user_ID, job_file_name, quiet mode, partition
 main function: send and track the jobs if the job number reaches the limitation
 =cut
@@ -76,26 +92,31 @@ my @args = split(/\s/, $arg);
 my $nodes = 1; #set nodes used for qsub job
 my $ppn = 1; #set ppn used for qsub job
 my $mem = 0; #set memory used for qsub job; 0 means no memory defined.
+my $gpu = 0; #set the GPU usage;
 my $home1 = (getpwuid $>)[7]; #get the $HOME path
 
 my @server = `ip route get 1.2.3.4 \| awk \'\{print \$7\}\'`;
 chomp(@server);
 my $serv = -1;
 my $scr_dir = '#PBS'; 
-my $par = '-q'; 
-my $snode; 
-my $wall = '-l walltime='; 
-my $jenv = '-V';
-my $smail = '-M '; 
-my $mtype = '-m abe'; 
-my $jn = '-N ';  
-my $sppn; 
-my $pname = '-P ';
+my $par = '-q'; #which job class to use
+my $snode; #node to use
+my $wall = '-l walltime='; #running time 
+my $jenv = '-V'; #copy current environment
+my $smail = '-M '; #send e-mail
+my $mtype = '-m abe'; #event of notification by e-mail
+my $jn = '-N ';  #job name
+my $sppn; #total task (CPU) to use
+my $pname = '-P '; #account to charge (Taiwania)
+my $otype = '-j oe';
+my $naro_server = 'hostos_c1';
+my $docker = '';
+
 foreach (@server){
-    	if ($_ =~ /<PBS_server_IP>/){ #PBS system
-		$serv = 1;
-    	}
-    	elsif ($_ =~ /<Slurm_server_IP>/){ #Slurm system
+	#if ($_ =~ /<PBS_server_IP>/){ #PBS system
+	#	$serv = 1;
+	#}
+    if ($_ =~ /172.28.111/){ #Taiwania 3, Slurm system
 		$serv = 3;
 		$scr_dir = '#SBATCH';
 		$par = '-p';
@@ -106,10 +127,34 @@ foreach (@server){
 		$mtype = '-–mail-type=ALL';
 		$jn = '-J '; #job name
 		$sppn = '--ntasks-per-node=';
-		$pname = '-A ';		
+		$pname = '-A ';
+		$otype = '';
 	}
-	elsif ($_ =~ /<PBS_pro_server_IP>/) { #PBS_pro system (default)
+    if ($_ =~ /150.26.186/){ #Scion, Slurm system
+		$serv = 5;
+		$scr_dir = '#SBATCH';
+		$par = '--partition';
+		$snode = '--nodes=';
+		$wall = '--time=';
+		$jenv = '--export=ALL';
+		$smail = '--mail-user=';
+		$mtype = '-–mail-type=ALL';
+		$jn = '--job-name '; #job name
+		$sppn = '--ntasks-per-node=';
+		#$pname = '-A ';
+		$otype = '';
+	}
+	elsif ($_ =~ /140.112.2/) { #PBS_pro system (default)
 		$serv = 2;
+	}
+	elsif ($_ =~ /150.26.179/){ #Japan NARO server
+		$serv = 4;
+		$scr_dir = '#$';
+		$par = '-jc';
+		$jenv = '-cwd';
+		$wall = '-mods l_hard h_rt ';
+		$otype = '-j y';
+		$jn = '-N ';
 	}
 }
 
@@ -120,7 +165,7 @@ if ($#args == -1){
 my $query;
 
 my $exc; my $sn; my @envs; my $ran; my $proj; my $mail; my $user_queue; my $home;
-my $qname = "cj"; my $conda; my @module; my $quiet; my $local; my $timel;
+my $qname = "cj"; my $conda; my @module; my $quiet; my $local; my $timel; my $docker;
 for (my $i=0;$i<=$#args;$i++){
 	if ($args[$i] eq "\-cj_exc"){
 		$exc = 1;
@@ -184,6 +229,13 @@ for (my $i=0;$i<=$#args;$i++){
 		$args[$i] = "";
 		$args[$i+1] = "";
 	}
+	if ($args[$i] eq "\-cj_gpu"){
+		if ($args[$i+1] !~ /[^0-9]/){
+			$gpu = $args[$i+1];
+		}
+		$args[$i] = "";
+		$args[$i+1] = "";
+	}
 	if ($args[$i] eq "\-cj_qname"){
 		if ($args[$i+1] =~ /\w/){
 			$qname = $args[$i+1];
@@ -226,16 +278,21 @@ for (my $i=0;$i<=$#args;$i++){
 		$args[$i] = "";
 		$args[$i+1] = "";
 	}
-	if ($ARGV[$i] eq "\-cj_queue"){
-		if ($ARGV[$i+1] =~ /^trans|^ct/){
-			$user_queue = $ARGV[$i+1];
+	if ($args[$i] eq "\-cj_queue"){
+		if ($args[$i+1] =~ /^trans|^ct|^intr|^single|^normal|^large|^ai/){
+			$user_queue = $args[$i+1];
 		}
 		else {
 			print "$user_queue is incorrect, skipped.\n";
 			$user_queue = "";
 		}
-		$ARGV[$i] = "";
-		$ARGV[$i+1] = "";
+		$args[$i] = "";
+		$args[$i+1] = "";
+	}
+	if ($args[$i] eq "\-cj_docker"){
+	    $docker = $args[$i+1];
+		$args[$i] = "";
+		$args[$i+1] = "";	    
 	}
 }
 unless ($home){
@@ -245,223 +302,409 @@ my $c_line = join(" ", @args);
 $c_line =~ s/\s+/ /g;
 $c_line =~ s/^\s+//;
 
-if ($local == 1){
-	goto COMMAND;
-}
-
-unless (-d "$home\/qsub_files"){
-	system ("mkdir $home\/qsub_files");
-}
-unless (-d "$home\/qsub_files\/out"){
-	system ("mkdir $home\/qsub_files\/out");
-}
-RE:
-unless ($ran){
-	$ran = &rnd_str(4, "A".."Z", 0..9);
-}
-if (-e "$home\/qsub_files\/$ran\_$qname\.q" && $sn != 1){
-	$ran = undef;
-	goto RE;
-}
-
-my $adjust; my $check_ppn; my $check_nodes;
-if ($mem == 0){
-	$mem = "";
-}
-else {
-	if ($serv == 1 || $serv == 2){ #every core only has 6 gb memory, so if request large memory, adjust core number based on memory value.
-        $check_ppn = $mem / 6;
-        $check_ppn++ if ($check_ppn > int($check_ppn));
-        if ($ppn < int($check_ppn)){
-            $ppn = int($check_ppn);
-            $adjust = "Adjusted ncpus\/mpiprocs to $ppn based on memory request.\n";
-        }
-        if ($serv == 1){
-        	$mem = "$scr_dir \-l mem\=$mem\gb\n";
-        }
-        if ($serv == 2){
-        	$mem = "\:mem\=$mem\gb";
+unless ($local == 1){
+    unless (-d "$home\/qsub_files"){
+        system ("mkdir $home\/qsub_files");
+    }
+    unless (-d "$home\/qsub_files\/out"){
+        system ("mkdir $home\/qsub_files\/out");
+    }
+    my $path = "$home\/qsub_files";
+    unless (defined $ran) {
+        $ran = rnd_str2($path);
+    }
+    #check memory
+    my $adjust; my $check_ppn; my $check_nodes;
+    if ($mem == 0){
+        $mem = "";
+    }
+    else {
+        if ($serv == 1 || $serv == 2){ #every core only has 6 gb memory, so if request large memory, adjust core number based on memory value.
+            $check_ppn = $mem / 6;
+            $check_ppn++ if ($check_ppn > int($check_ppn));
+            if ($ppn < int($check_ppn)){
+                $ppn = int($check_ppn);
+                $adjust = "Adjusted ncpus\/mpiprocs to $ppn based on memory request.\n";
+            }
+            if ($serv == 1){
+                $mem = "$scr_dir \-l mem\=$mem\gb\n";
+            }
+            if ($serv == 2){
+                $mem = "\:mem\=$mem\gb";
+            }
+            if ($serv == 3 || $serv == 5){
+            }
         }
         if ($serv == 3){
+            $check_ppn = $mem / 12;
+            $check_ppn++ if ($check_ppn > int($check_ppn));
+            if ($ppn < int($check_ppn)){
+                $ppn = int($check_ppn);
+                $adjust = "Adjusted ncpus\/mpiprocs\/ntasks-per-node to $ppn based on memory request.\n";
+            }
+            if ($mem == 0){
+                $mem = "";
+            }
+            else {
+                $mem = "$scr_dir --mem\=$mem\G\n";
+            }
         }
-	}
-	if ($serv == 3){
-        $check_ppn = $mem / 12;
-        $check_ppn++ if ($check_ppn > int($check_ppn));
-        if ($ppn < int($check_ppn)){
-            $ppn = int($check_ppn);
-            $adjust = "Adjusted ncpus\/mpiprocs\/ntasks-per-node to $ppn based on memory request.\n";
+        if ($serv == 5){
+            if ($user_queue eq "large"){
+                #$check_ppn = $mem / 7;
+                if ($mem > 1536){
+                    $check_nodes = 2;
+                    $adjust = "Adjusted $check_nodes to 2 based on memory request.\n";
+                    if ($mem > 3072){
+                        $adjust .= "Adjusted $mem to 3072, because the request exceed the resources.\n";
+                        $mem = 3072;
+                    }
+                }
+            }
+            elsif ($user_queue eq "ai"){
+                #$check_ppn = $mem / 10;
+                if ($mem > 1024){
+                    $mem = 1024;
+                    $check_nodes = 1;
+                    $adjust = "Adjusted $check_nodes to 1 based on memory request.\n";
+                    $adjust .= "Adjusted $mem to 1024, because the request exceed the resources.\n";
+                }
+            }
+            else {
+                #$check_ppn = $mem / 3.5;
+                $check_nodes = $mem / 768;
+                $check_nodes++ if ($check_nodes > int($check_nodes));
+                $check_nodes = int($check_nodes);
+                if ($check_nodes > 2){
+                    $check_nodes = 2;
+                    $mem = 1536;
+                }
+            }
+            #$check_ppn++ if ($check_ppn > int($check_ppn));
+            #if ($ppn < int($check_ppn)){
+            #    $ppn = int($check_ppn);
+            #    $adjust = "Adjusted ncpus\/mpiprocs\/ntasks-per-node to $ppn based on memory request.\n";
+            #}
+            if ($mem == 0){
+                $mem = "";
+            }
+            else {
+                $mem = "$scr_dir --mem\=$mem\G\n";
+            }
         }
-	    if ($mem == 0){
-			$mem = "";
-		}
-		else {
-			$mem = "$scr_dir --mem\=$mem\G\n";
-		}
-	}
-}
-if ($serv == 1){
-	$check_nodes = $ppn / 12;
-}
-if ($serv == 2){
-	$check_nodes = $ppn / 20;
-}
-if ($serv == 3){ #Taiwania 3
-	my @avail_proj = `get_su_balance`; my $check_proj = 0; my $balance;
-	chomp(@avail_proj);
-	@avail_proj = grep {$_ ne ""} @avail_proj;
-	foreach (@avail_proj){
-		if ($_ =~ /$proj/){
-			$check_proj = 1;
-			$_ =~ s/[\{\}\"]//g;
-			my @tmp = split(/\,/, $_); #balance is the last one
-			chomp(@tmp);
-			#print "debug: @tmp\n";
-			my @proj_tmp = split(/\:/, $tmp[0]);
-			my @bal_tmp = split(/\:/, $tmp[-1]);
-			$balance = $proj_tmp[1];
-			$proj = $proj_tmp[1];
-		}
-	}
-	if ($check_proj == 0){
-		unless ($quiet == 1){
-			print "\nProject is not found\/defined, selecting the best project for the job...";
-		}
-		foreach (@avail_proj){
-			$_ =~ s/[\{\}\"]//g;
-			my @tmp = split(/\,/, $_);
-			chomp(@tmp);
-			my @proj_tmp = split(/\:/, $tmp[0]); #project ID is the first one
-			#print "debug: @proj_tmp\n";
-			my @bal_tmp = split(/\:/, $tmp[-1]); #balance is the last one
-			unless ($proj){
-				$proj = $proj_tmp[1];
-				$balance = $bal_tmp[1];
-			}
-			else {
-				if ($balance < $bal_tmp[1]){
-					$balance = $bal_tmp[1];
-					$proj = $proj_tmp[1];
-				}
-			}
-		}
-	}
-	unless ($quiet == 1){
-		print BOLD "\nProject: $proj is used. $balance balance is available.\n", RESET;
-	}
-	if ($balance <= 0){
-		die "There is no balance for the project.\n";
-		print "Project condition\(s\):\n";
-		system("get_su_balance");
-		exit;
-	}
-	elsif ($balance < 10){
-		print "WARNING: The available balance for the project is less than 10.\n";
-		print "Project condition\(s\):\n";
-		system("get_su_balance");
-	}
-	elsif ($balance < 5){
-		print "WARNING: The available balance for the project is less than 5.\n";
-		print "Project condition\(s\):\n";
-		system("get_su_balance");
-	}
-	$proj = "$scr_dir $pname$proj\n";
-	if ($user_queue){
-		$query = "$scr_dir $par $user_queue\n";
-	}
-	if ($ppn <= 56){
-		$query = "$scr_dir $par ct56\n";
-	}
-	elsif ($ppn <= 224){
-		$query = "$scr_dir $par ct224\n";
-	}
-	elsif ($ppn <= 560){
-		$query = "$scr_dir $par ct560\n";
-	}
-	elsif ($ppn <= 2240){
-		$query = "$scr_dir $par ct2k\n";
-	}
-	else {
-		$query = "$scr_dir $par ct8k\n";
-	}
-	#temp_use
-	my $time = scalar localtime();
-	$time =~ s/[\[\]]//g;
-	my @time_f = split(/\s+|\t/, $time);
-	if ($time_f[1] eq 'Apr' && $time_f[-1] eq '2024'){
-		if ($time_f[2] <= 27){
-			$query = "$scr_dir $par trans\n";
-		}
-	}
-	#temp_use
-	$check_nodes = $ppn / 56; #56 threads in 1 node
-}
-$check_nodes++ if ($check_nodes > int($check_nodes));
-if ($nodes < int($check_nodes)){
-	$nodes = int($check_nodes);
-}
-
-my $m_out = $mem;
-if ($m_out eq ""){
-	$m_out = "system default";
-} else {
-    $m_out =~ s/\:mem\=|$scr_dir \-l mem\=|$scr_dir --mem\=//g;
-}
-
-my $t_out = $timel;
-if ($timel){
-	$t_out = "$scr_dir $wall$timel\n";
-}
-else {
-	$timel = "system default";
-}
-
-my $q_type = $query;
-$q_type =~ s/$scr_dir|$par|\s//g;
-unless ($q_type){
-    $q_type = "system default";
-}
-unless ($quiet == 1){
-	print BOLD "\nInfo of the job:\n", RESET;
-	print "serial number: $ran\njob name: $qname\n";
-}
-if ($serv == 3){
-	my $p_name = $proj;
-	$p_name =~ s/$scr_dir|-P|-A|\s//gi;
-	unless ($quiet == 1){
-		print "project name: $p_name\n";
-	}
-}
-unless ($quiet == 1){
-	print "queue name: $q_type\nnode\(select\): $nodes\nppn\(ncpus\/mpiprocs\): $ppn\nmem: $m_out\nwalltime: $timel\n";
-	if ($adjust){
-		print $adjust;
-	}
-}
-
-open (INPUT, ">$home\/qsub_files\/$ran\_$qname\.q") || die BOLD "Cannot write $home\/qsub_files\/$ran\_$qname\.q: $!", RESET, "\n";
-COMMAND:
-unless ($local == 1){
+    }
+    unless (defined $check_nodes){
+        $check_nodes = 1;
+    }
+    #check ppn
+    my $check_nodes_tmp;
+    if ($serv == 1){
+        $check_nodes = $ppn / 12;
+    }
+    elsif ($serv == 2){
+        $check_nodes = $ppn / 20;
+    }
+    elsif ($serv == 3){ #Taiwania 3
+        my @avail_proj = `get_su_balance`; my $check_proj = 0; my $balance;
+        chomp(@avail_proj);
+        @avail_proj = grep {$_ ne ""} @avail_proj;
+        foreach (@avail_proj){
+            if ($_ =~ /$proj/){
+                $check_proj = 1;
+                $_ =~ s/[\{\}\"]//g;
+                my @tmp = split(/\,/, $_); #balance is the last one
+                chomp(@tmp);
+                my @proj_tmp = split(/\:/, $tmp[0]);
+                my @bal_tmp = split(/\:/, $tmp[-1]);
+                $balance = $proj_tmp[1];
+                $proj = $proj_tmp[1];
+            }
+        }
+        if ($check_proj == 0){
+            unless ($quiet == 1){
+                print "\nProject is not found\/defined, selecting the best project for the job...";
+            }
+            foreach (@avail_proj){
+                $_ =~ s/[\{\}\"]//g;
+                my @tmp = split(/\,/, $_);
+                chomp(@tmp);
+                my @proj_tmp = split(/\:/, $tmp[0]); #project ID is the first one
+                my @bal_tmp = split(/\:/, $tmp[-1]); #balance is the last one
+                unless ($proj){
+                    $proj = $proj_tmp[1];
+                    $balance = $bal_tmp[1];
+                }
+                else {
+                    if ($balance < $bal_tmp[1]){
+                        $balance = $bal_tmp[1];
+                        $proj = $proj_tmp[1];
+                    }
+                }
+            }
+        }
+        unless ($quiet == 1){
+            print BOLD "\nProject: $proj is used. $balance balance is available.\n", RESET;
+        }
+        if ($balance <= 0){
+            die "There is no balance for the project.\n";
+            print "Project condition\(s\):\n";
+            system("get_su_balance");
+            exit;
+        }
+        elsif ($balance < 10){
+            print "WARNING: The available balance for the project is less than 10.\n";
+            print "Project condition\(s\):\n";
+            system("get_su_balance");
+        }
+        elsif ($balance < 5){
+            print "WARNING: The available balance for the project is less than 5.\n";
+            print "Project condition\(s\):\n";
+            system("get_su_balance");
+        }
+        $proj = "$scr_dir $pname$proj\n";
+        if ($user_queue){
+            $query = "$scr_dir $par $user_queue\n";
+        }
+        if ($ppn <= 56){
+            $query = "$scr_dir $par ct56\n";
+        }
+        elsif ($ppn <= 224){
+            $query = "$scr_dir $par ct224\n";
+        }
+        elsif ($ppn <= 560){
+            $query = "$scr_dir $par ct560\n";
+        }
+        elsif ($ppn <= 2240){
+            $query = "$scr_dir $par ct2k\n";
+        }
+        else {
+            $query = "$scr_dir $par ct8k\n";
+        }
+        $check_nodes = $ppn / 56; #56 threads in 1 node
+    }
+    elsif ($serv == 5){
+        if ($user_queue){
+            $query = "$scr_dir $par $user_queue\n";
+            if ($user_queue eq "ai"){
+                $check_nodes_tmp = $ppn / 96;
+                if ($check_nodes_tmp > 1){
+                    $ppn = 96;
+                    $check_nodes_tmp = 1;
+                }
+            }
+            else {
+                $check_nodes_tmp = $ppn / 192;
+                if ($check_nodes_tmp > 2){
+                    $ppn = 384;
+                    $check_nodes_tmp = 2;
+                }
+            }
+        }
+        else {
+            $query = "$scr_dir $par normal\n";
+            $check_nodes_tmp = $ppn / 192;
+            if ($check_nodes_tmp > 2){
+                $ppn = 384;
+                $check_nodes_tmp = 2;
+            }            
+        }
+    }
+    if (defined $check_nodes_tmp){
+        if ($check_nodes_tmp > $check_nodes){
+            $check_nodes = $check_nodes_tmp;
+        }
+    }
+    $check_nodes++ if ($check_nodes > int($check_nodes));
+    if ($nodes < int($check_nodes)){
+        $nodes = int($check_nodes);
+    }
+    if ($serv == 4){ #NARO server
+        my $gpu_core = 1; my $cpu_lv = 1; my $mem_lv = 1;
+        my @s_resource = (1,1,1); #cpu,gpu,memory
+        if ($gpu == 0 && $docker){
+            $gpu = 1;
+        }
+        if ($gpu == 0){
+            if ($ppn == 1){}
+            elsif ($ppn == 2){$s_resource[0] = 2;}
+            elsif ($ppn > 2 && $ppn <= 4){$s_resource[0] = 4;}
+            elsif ($ppn > 4 && $ppn <= 8){$s_resource[0] = 8;}
+            elsif ($ppn > 8 && $ppn <= 16){$s_resource[0] = 16;}
+            elsif ($ppn > 16 && $ppn <= 32){$s_resource[0] = 32;}
+            else {
+                $nodes = $ppn / 32;
+                $nodes++ if ($nodes > int($nodes));
+                $naro_server = "parallel_gic";
+                $s_resource[0] = 32;
+            }
+            if ($mem > 0) {
+                if ($mem <=14){}
+                elsif ($mem > 14 && $mem <= 28){$s_resource[2] = 2;}
+                elsif ($mem > 28 && $mem <= 56){$s_resource[2] = 4;}
+                elsif ($mem > 56 && $mem <= 112){$s_resource[2] = 8;}
+                elsif ($mem > 112 && $mem <= 225){$s_resource[2] = 16;}
+                elsif ($mem > 225 && $mem <= 450){$s_resource[2] = 32;}
+                elsif ($mem > 450 && $mem <= 1000){$s_resource[2] = 64;}
+            }
+            if ($naro_server ne "parallel_gic"){
+                my @class = sort {$b <=> $a} @s_resource;
+                my $lv = 1;
+                if ($class[0] == 64){
+                    $lv = "large";
+                }
+                else {
+                    $lv = $class[0];
+                }
+                $naro_server = "hostos_c$lv";
+            }
+        }
+        else { #using GPU
+            if ($ppn <= 8){}
+            elsif ($ppn > 8 && $ppn <= 36){$s_resource[0] = 4;}
+            elsif ($ppn > 36 && $ppn <= 72){$s_resource[0] = 8;}
+            else {
+                $nodes = $ppn / 72;
+                $nodes++ if ($nodes > int($nodes));
+                $naro_server = "parallel";
+                $s_resource[0] = $ppn;
+                if ($nodes > 2){
+                    $nodes = 2;
+                }
+                if ($s_resource[0] > 144){
+                    $s_resource[0] = 144;
+                }
+            }
+            if ($gpu == 1){$s_resource[1] = 1;}
+            elsif ($gpu > 1 && $gpu <= 4){$s_resource[1] = 4;}
+            elsif ($gpu > 4 && $gpu <= 8){$s_resource[1] = 8;}
+            else {
+                $nodes = $gpu / 8;
+                $nodes++ if ($nodes > int($nodes));
+                $naro_server = "parallel";
+                if ($nodes > 2){
+                    $nodes = 2;
+                }
+                if ($nodes == 1){
+                    $s_resource[1] = 8;
+                }
+                else {
+                    $s_resource[1] = 16;
+                }
+            }
+            if ($mem > 0) {
+                if ($mem <= 180){$s_resource[2] = 1;}
+                elsif ($mem > 180 && $mem <= 720){$s_resource[2] = 4;}
+                elsif ($mem > 720 && $mem <= 1440){$s_resource[2] = 8;}
+            }
+            my $lv;
+            if ($naro_server ne "parallel"){
+                my @class = sort {$b <=> $a} @s_resource;
+                $lv = $class[0];
+                $naro_server = "hostos_g$lv";
+            }
+            if ($docker){
+                if ($naro_server eq "parallel"){
+                    $naro_server = "docker_g8";
+                }
+                else {
+                    $naro_server = "docker_g$lv";
+                }
+            }	
+        }
+    }
+    
+    my $m_out = $mem;
+    if ($m_out eq ""){
+        $m_out = "system default";
+    } else {
+        $m_out =~ s/\:mem\=|$scr_dir \-l mem\=|$scr_dir --mem\=//g;
+    }
+    
+    my $t_out = $timel;
+    if ($timel){
+        if ($serv == 4){
+            my @tmp = split(/\:/, $timel);
+            chomp(@tmp);
+            if (length($tmp[1]) == 1){
+                $tmp[1] = "0".$tmp[1];
+                $tmp[1] =~ s/\s+//g;
+            }
+            if (length($tmp[2]) == 1){
+                $tmp[2] = "0".$tmp[2];
+                $tmp[2] =~ s/\s+//g;
+            }
+            $timel = join("\:", @tmp)
+        }
+        $t_out = "$scr_dir $wall$timel\n";
+    }
+    else {
+        $timel = "system default";
+        if ($serv == 4){
+            $timel = '320:0:0'; #just set it as 168 hours
+            my @tmp = split(/\:/, $timel);
+            chomp(@tmp);
+            if (length($tmp[1]) == 1){
+                $tmp[1] = "0".$tmp[1];
+                $tmp[1] =~ s/\s+//g;
+            }
+            if (length($tmp[2]) == 1){
+                $tmp[2] = "0".$tmp[2];
+                $tmp[2] =~ s/\s+//g;
+            }
+            $timel = join("\:", @tmp);
+            $t_out = "$scr_dir $wall$timel\n";
+        }
+    }
+    
+    my $q_type = $query;
+    $q_type =~ s/$scr_dir|$par|\s//g;
+    unless ($q_type){
+        $q_type = "system default";
+    }
+    unless ($quiet == 1){
+        print BOLD "\nInfo of the job:\n", RESET;
+        print "serial number: $ran\njob name: $qname\n";
+    }
+    if ($serv == 3){
+        my $p_name = $proj;
+        $p_name =~ s/$scr_dir|-P|-A|\s//gi;
+        unless ($quiet == 1){
+            print "project name: $p_name\n";
+        }
+    }
+    unless ($quiet == 1){
+        if ($serv == 4){
+            print "job class: $naro_server\n";
+        }
+        print "queue name: $q_type\nnode\(select\): $nodes\nppn\(ncpus\/mpiprocs\): $ppn\nmem: $m_out\nwalltime: $timel\n";
+        if ($adjust){
+            print $adjust;
+        }
+    }
+    
+    open (INPUT, ">$home\/qsub_files\/$ran\_$qname\.q") || die BOLD "Cannot write $home\/qsub_files\/$ran\_$qname\.q: $!", RESET, "\n";
 	if ($serv == 1){
     	print INPUT "\#\!\/bin\/bash\n$scr_dir \-l nodes\=$nodes\:ppn\=$ppn\n$mem$t_out$mail$scr_dir \-o $home\/qsub_files\/out\/$ran\_$qname\.out \-j oe\n";
 	}
 	if ($serv == 2){
     	print INPUT "\#\!\/bin\/bash\n$scr_dir \-l select\=$nodes\:ncpus\=$ppn\:mpiprocs=$ppn$mem\n$t_out$mail$scr_dir \-o $home\/qsub_files\/out\/$ran\_$qname\.out \-j oe\n$scr_dir $jenv\n";
 	}
-	if ($serv == 3){
+	if ($serv == 3 || $serv == 5){
 		unless ($local == 1){
-			#if ($mem == 0){
-			#	$mem = "";
-			#}
-			#else {
-			#	$mem = "$scr_dir --mem\=$mem\G\n";
-			#}
 			my $j_name = "$scr_dir $jn$ran\_$qname\n";
     		print INPUT "\#\!\/bin\/bash\n$proj$query$j_name$scr_dir $snode$nodes\n$scr_dir $sppn$ppn\n$mem$t_out$mail$scr_dir \-o $home\/qsub_files\/out\/$ran\_$qname\.out\n$scr_dir $jenv\n\n";
-    		#for taiwania 3
-    		#print INPUT "ml load old-module\nml load biology\nml load biology\/GATK\/4.2.3.0\n\n";
-    		#for taiwania 3
    	 	}
+	}
+	if ($serv == 4){
+	    my $parti = "";
+	    if ($naro eq "parallel"){
+	        $parti = "$scr_dir -par 72\n";
+	    }
+	    if ($docker){
+		    $docker = "$scr_dir -ac d\=$docker\n";
+		}
+	    my $j_name = "$scr_dir $jn$ran\_$qname\n";
+		print INPUT "\#\!\/bin\/bash\n$scr_dir -S /bin/bash\n$docker$t_out$j_name$mail$scr_dir $jenv\n$scr_dir $par $naro_server\n$parti$scr_dir $otype\n$scr_dir -o $home\/qsub_files\/out\/$ran\_$qname\.out\n$scr_dir -V\n\n";
 	}
 }
 if (@module){
@@ -475,19 +718,48 @@ if (@module){
 	}
 }
 unless ($local == 1){
-	unless ($serv == 3){
+	if ($serv == 1 || $serv == 2){
 		print INPUT "\ncd \$PBS_O_WORKDIR\n";
 	}
 }
-if ($conda && ($serv == 1 || $serv == 2)){
+if ($serv == 5){
+    print INPUT "module load miniconda\n";
+    print INPUT "\ncd \$SLURM_SUBMIT_DIR\n";
+}
+if ($serv == 4){
+    print INPUT "source /home/chinc518/.bashrc\n";
+    print INPUT "source /home/chinc518/miniforge3/etc/profile.d/conda.sh\n";
+    unless ($docker){
+        print INPUT "source /etc/profile.d/modules.sh\n";
+        my $env_ck = `echo \$gatk4 2\>\&1`;
+        #if ($env_ck =~ /gatk-4\.2\.2\.0/ || $c_line =~ /canu/){
+        #    print INPUT "export JAVA_HOME\=\$HOME\/softwares\/openjdk_8\n";
+        #    print INPUT "export PATH\=\$JAVA_HOME\/bin\:\$PATH\n";
+        #}
+    }
+    print INPUT "export LD_LIBRARY_PATH\=/home/chinc518/miniforge3/envs/libcurl/lib:/home/chinc518/softwares/libs\:\$LD_LIBRARY_PATH\n";
+    print INPUT "\ncd \$SGE_O_WORKDIR\n";
+    
+}
+if ($conda){
 	unless ($quiet == 1){
 		print "conda env: $conda\n";
     }
-    if ($local == 1){
-    	system("conda activate $conda");
+    if ($serv == 1 || $serv == 2){
+    	if ($local == 1){
+    		system("conda activate $conda");
+    	}
+    	else {
+    		print INPUT "source activate $conda\n";
+   		}
     }
-    else {
-    	print INPUT "source activate $conda\n";
+    if ($serv == 3 || $serv == 4 || $serv == 5){
+    	if ($local == 1){
+    		system("conda activate $conda");
+    	}
+    	else {
+    		print INPUT "conda activate $conda\n";
+   		}    
     }
 }
 if (@envs){
@@ -525,7 +797,7 @@ else {
 		print INPUT "$c_line\n";
 	}
 }
-if ($conda  && ($serv == 1 || $serv == 2)){
+if ($conda  && ($serv == 1 || $serv == 2 || $serv == 3 || $serv == 4 || $serv == 5)){
 	if ($local == 1){
 		system("conda deactivate");
 	}
@@ -542,11 +814,11 @@ unless ($local == 1){
 if ($exc == 1 && $local != 1){
 	my @tmp = split(/\//, $home1);
 	my $uid = $tmp[-1];
-	if ($serv == 3){
-		&status_tw3($uid, "sbatch $home\/qsub_files\/$ran\_$qname\.q", $quiet, $q_type);
+	if ($serv == 3 || $serv == 5){
+		status_slurm($uid, "sbatch $home\/qsub_files\/$ran\_$qname\.q", $quiet, $q_type, $serv);
 	}
 	else {
-		&status_other($ran, $uid, "qsub $home\/qsub_files\/$ran\_$qname\.q", $quiet, $q_type);
+		status_other($ran, $uid, "qsub $home\/qsub_files\/$ran\_$qname\.q", $quiet, $q_type, $serv);
 	}
 }
 #always delete qsub files and log files older than 90 days
@@ -554,13 +826,69 @@ system("find $home\/qsub_files \! -type d -mtime \+90 -exec rm -f \{\} \+");
 system("find $home\/qsub_files\/out \! -type d -mtime \+90 -exec rm -f \{\} \+");
 return "qsub $home\/qsub_files\/$ran\_$qname\.q";
 }
+
 sub rnd_str {
-	join("", @_[map{rand@_} 1..shift]);
-} #generate serial number
-sub status_tw3 {
+    my @letters = grep { /^[A-Za-z]$/ } @_;
+	join("", $letters[rand @letters], @_[map{rand@_} 1..($_[0] - 1)]);
+} #generate serial number (for old programs)
+
+sub name_exists_in_dir {
+    my ($dir, $target) = @_;
+    opendir my $dh, $dir or die "Cannot open $dir: $!";
+    while (my $entry = readdir $dh) {
+        next if $entry eq '.' or $entry eq '..';
+
+        if ($entry =~ /\Q$target\E/) {
+            closedir $dh;
+            return 1;
+        }
+    }
+    closedir $dh;
+    return 0;
+} #check if the serial number exists
+
+sub rnd_str2 {
+    my ($path) = @_;
+    my $try = 0;
+    my $tmp;
+    while ($try++ < 1000) {
+        $tmp = rnd_str(4, "A".."Z", 0..9);
+        return $tmp unless name_exists_in_dir($path, $tmp);
+    }
+    die "Failed to generate unique run ID";
+} #this is for returning a serial number and check existence. (for new programs)
+
+sub scheduler_backoff {
+	my ($mode, $attempt) = @_;
+	$attempt = 1 unless defined $attempt && $attempt > 0;
+	my $idx = $attempt <= 3 ? 0 : ($attempt <= 10 ? 1 : 2);
+	my $ranges_ref;
+	if ($mode eq "query_retry"){
+		$ranges_ref = \@QUERY_RETRY_SLEEPS;
+	}
+	elsif ($mode eq "submit_retry"){
+		$ranges_ref = \@SUBMIT_RETRY_SLEEPS;
+	}
+	elsif ($mode eq "queue_busy"){
+		$ranges_ref = \@QUEUE_BUSY_SLEEPS;
+	}
+	else {
+		$ranges_ref = \@ACTIVE_JOB_SLEEPS;
+	}
+	my ($low, $high) = @{$ranges_ref->[$idx]};
+	return $low + int(rand($high - $low + 1));
+}
+
+sub status_slurm {
 	my $time = scalar localtime();
-	my $uid = shift; my $job_q = shift; my $quiet = shift; my $q_type = shift;
-	my $job_count; my $check_sent = 0;# my $core_count; 
+	my $uid = shift; my $job_q = shift; my $quiet = shift; my $q_type = shift; my $serv = shift;
+	my $job_count; my $check_sent = 0; my $wait_round = 0;# my $core_count; 
+	my $home;
+	unless (defined $uid){
+	    $home = (getpwuid $>)[7]; #get the $HOME path
+	    my @tmp = split(/\//, $home);
+	    $uid = $tmp[-1];
+	}
 	unless ($quiet == 1){
 		print "\[$time\]\: Press ctrl \+ c to terminate this script.\n";
 		print "\[$time\]\: WARNING: If you terminate this script, the following qsub job\(s\)\/step\(s\) will not be generated and executed. If you run this script in background using \"nohup\", you can ignore this message.\n";
@@ -569,22 +897,28 @@ sub status_tw3 {
 	do {
 		$time = scalar localtime();
 		my @stat;
+		$job_count = 0;
 		do {
 			@stat = `squeue -u $uid 2\>\&1`;
 		} until ($stat[0] !~ /Socket timed out/i);
 		foreach (@stat){
 			if ($_ =~ /$uid/i && $_ =~ /$q_type\b/){
 				$job_count++; #running and padding jobs are counted together
-				#@temp = split(/\s+|\t+/, $_);
-				#$core_count += $temp[4];
 			}
 		}
-		#$core_count += $ppn;
-		if (($q_type eq "ct224" && $job_count >= 75) || ($q_type eq "ct56" && $job_count >= 80) || ($q_type eq "ct560" && $job_count >= 45) || ($q_type eq "ct2k" && $job_count >= 18) || ($q_type eq "ct8k" && $job_count >= 6) || ($q_type eq "trans" && $job_count >= 30)){
+		if ((($q_type eq "ct224" && $job_count >= 75) || ($q_type eq "ct56" && $job_count >= 80) || ($q_type eq "ct560" && $job_count >= 45) || ($q_type eq "ct2k" && $job_count >= 18) || ($q_type eq "ct8k" && $job_count >= 6) || ($q_type eq "trans" && $job_count >= 30)) && $serv == 3){
 			unless ($quiet == 1){
 				print "\rYour request is over the limitation in the waiting\/running list. Some jobs will be sent later.";
 			}
-			sleep(10);
+			$wait_round++;
+			sleep(scheduler_backoff("queue_busy", $wait_round));
+		}
+		elsif ($serv == 5 && $job_count >= 80){
+			unless ($quiet == 1){
+				print "\rYour request is over the limitation in the waiting\/running list. Some jobs will be sent later.";
+			}
+			$wait_round++;
+			sleep(scheduler_backoff("queue_busy", $wait_round));		    
 		}
 		else {
 			my $repeat = 0; my $violate = 0;
@@ -594,7 +928,7 @@ sub status_tw3 {
 				do {
 					$tmp = `$job_q 2\>\&1`;
 					$resend++;
-					sleep(3);
+					sleep(scheduler_backoff("submit_retry", $resend)) if ($tmp =~ /submission failed|error/i && $resend < 50);
 				} until ($tmp !~ /submission failed|error/i || $resend == 50);
 				print "\n$job_q job is sent.\n";
 				my $show_job_count = $job_count + 1;
@@ -623,8 +957,14 @@ sub status_tw3 {
 }
 sub status_other {
 	my $time = scalar localtime();
-	my $ran = shift; my $uid = shift; my $job_q = shift; my $quiet = shift; my $q_type = shift;
-	my $job_count; my $core_count; my $check_sent = 0;
+	my $ran = shift; my $uid = shift; my $job_q = shift; my $quiet = shift; my $q_type = shift; my $serv = shift;
+	my $job_count; my $check_sent = 0; my $wait_round = 0; #my $core_count;
+	my $home;
+	unless (defined $uid){
+	    $home = (getpwuid $>)[7]; #get the $HOME path
+	    my @tmp = split(/\//, $home);
+	    $uid = $tmp[-1];
+	}
 	unless ($quiet == 1){
 		print "\[$time\]\: Press ctrl \+ c to terminate this script.\n";
 		print "\[$time\]\: WARNING: If you terminate this script, the following qsub job\(s\)\/step\(s\) will not be generated and executed. If you run this script in background using \"nohup\", you can ignore this message.\n";
@@ -632,25 +972,43 @@ sub status_other {
 	}
 	do {
 		$time = scalar localtime();
-		my @stat = `qstat -u $uid`;
+		my @stat;
+        open(my $fh, "-|", "qstat", "-u", $uid) or die "Failed to run qstat: $!";
+        while (my $line = <$fh>) {
+            chomp $line;
+            push @stat, $line;
+        }
+        close($fh);
 		my @temp;
 		$job_count = 0;
 		foreach (@stat){
-			if ($_ =~ /$ran/i){
+		    my $short = substr($uid, 0, 8);
+			if ($_ =~ /$short/i){
 				$job_count++;
 				@temp = split(/\s+/, $_);
-				$core_count += $temp[6];
 			}
 		}
 		if ($job_count >= 200){
 			unless ($quiet == 1){
 				print "\rYour jobs are too many. Some jobs will be sent later.";
 			}
-			sleep(30);
+			if ($serv == 4){
+                serv4chgrp();
+		    }
+			$wait_round++;
+			sleep(scheduler_backoff("queue_busy", $wait_round));
 		}
 		else {
-			my $tmp = `$job_q`;
-			print "\n$job_q job is sent.\n";
+			my $job_cmd = $job_q;
+			my $job_file = $job_q;
+			$job_file =~ s/^\s*qsub\s+//;
+			my $tmp = do {
+                open(my $fh, "-|", "qsub", $job_file) or die "Failed to run qsub: $!";
+                local $/;
+                <$fh>;
+            };
+            chomp $tmp;
+			print "\n$job_cmd job is sent.\n";
 			my $show_job_count = $job_count + 1;
 			print "$tmp";
 			if ($show_job_count == 1){
@@ -659,25 +1017,73 @@ sub status_other {
 			else {
 				print "$show_job_count jobs are on the list.\n";
 			}
+			if ($serv == 4){
+                serv4chgrp();
+		    }
 			$check_sent = 1;
 		}
 	} while ($check_sent == 0);
+	serv4chgrp();
 	1;
+}
+sub serv4chgrp {
+    #my @resp = `ls -l`;
+    my @resp;
+    open(my $fh, "-|", "ls", "-l") or die "Failed to run ls: $!";
+    @resp = <$fh>;
+    close($fh);
+    my $chg = 0; my $main_grp;
+    chomp(@resp);
+    foreach (@resp){
+        if ($_ =~ /^total/){
+            next;
+        }
+        my @grps = split(/\s+|\t+/, $_);
+        if ($grps[3] =~ /chinc/){
+            $chg = 1;
+            next;
+        }
+        else {
+            $main_grp = $grps[3];
+        }
+    }
+    if ($chg == 1 && $main_grp){
+        system("chgrp -R $main_grp \*");
+    }
+    1;
 }
 sub status {
 	my $time = scalar localtime();
 	my $ran = shift; my $uid = shift;
-	my $job_count;
-	my @server = `ip route get 1.2.3.4 \| awk \'\{print \$7\}\'`;
+	my $job_count; my $wait_round = 0;
+	my $home;
+	unless (defined $uid){
+	    $home = (getpwuid $>)[7]; #get the $HOME path
+	    my @tmp = split(/\//, $home);
+	    $uid = $tmp[-1];
+	}
+	#my @server = `ip route get 1.2.3.4 \| awk \'\{print \$7\}\'`;
+	my @server;
+    open(my $fh, "-|", "ip", "route", "get", "1.2.3.4") or die $!; 
+    while (my $line = <$fh>) {
+        if ($line =~ /\bsrc\s+(\S+)/) {
+            push @server, $1;
+        }
+    }
+    close($fh);
 	chomp(@server);
 	my $serv;
 	foreach (@server){
-    	if ($_ =~ /172.28.111/){ #Taiwania 3
+    	if ($_ =~ /172.28.111/ || $_ =~ /150.26.186/){ #Taiwania 3 or Scion
 			$serv = 1;
 			last;
 		}
 		elsif ($_ =~ /140.112.2/) { #NTU servers
 			$serv = 2;
+			last;
+		}
+		elsif ($_ =~ /150.26.179/) { #NARO servers
+			$serv = 3;
 			last;
 		}
 		else {
@@ -690,36 +1096,58 @@ sub status {
 	do {
 		$time = scalar localtime();
 		my @stat; my $resend = 0; $err;
-		if ($serv == 1){
-			if ($uid){
-				do {
-					@stat = `squeue -u $uid 2\>\&1`;
-					$err = 0;
-					$resend++;
-					sleep(3);
-					foreach (@stat){
-						if ($_ =~ /error/i){
+			if ($serv == 1){
+				if ($uid){
+					do {
+						open(my $fh, "-|", "squeue", "-u", $uid) or do {
 							$err = 1;
+							@stat = ();
+							last;
+						};
+						@stat = <$fh>;
+						close($fh);
+						$err = 0;
+						$resend++;
+						foreach (@stat){
+							if ($_ =~ /error/i){
+								$err = 1;
+							}
 						}
-					}
-				} until ($err == 0 || $resend == 50);
-			}
-			else {
-				do {
-					@stat = `squeue 2\>\&1`;
-					$err = 0;
-					$resend++;
-					sleep(3);
-					foreach (@stat){
-						if ($_ =~ /error/i){
+						sleep(scheduler_backoff("query_retry", $resend)) if ($err == 1);
+					} until ($err == 0 || $resend == 50);
+				}
+				else {
+					do {
+						open(my $fh, "-|", "squeue") or do {
 							$err = 1;
+							@stat = ();
+							last;
+						};
+						@stat = <$fh>;
+						close($fh);
+						$err = 0;
+						$resend++;
+						foreach (@stat){
+							if ($_ =~ /error/i){
+								$err = 1;
+							}
 						}
-					}
-				} until ($err == 0 || $resend == 50);
+						sleep(scheduler_backoff("query_retry", $resend)) if ($err == 1);
+					} until ($err == 0 || $resend == 50);
+				}
 			}
+			elsif ($serv == 2) {
+			@stat = do {
+                open(my $fh, "-|", "qstat", "-G") or die $!;
+                <$fh>;
+            };
 		}
 		else {
-			@stat = `qstat \-G`;
+		    #@stat = `qstat`;
+		    @stat = do {
+                open(my $fh, "-|", "qstat") or die $!;
+                <$fh>;
+            };
 		}
 		my @temp;
 		my @jobs;
@@ -733,7 +1161,7 @@ sub status {
 				else {
 					$uid_cut = $uid;
 				}
-				if ($_ =~ /$ran/ && $_ =~ /$uid_cut/){
+				if ($_ =~ /$uid_cut/ && $_ =~ /$ran/){
 					$job_count += 1;
 					@temp = split(/\s+/, $_);
 					push(@jobs, $temp[1]);
@@ -757,10 +1185,17 @@ sub status {
 				print "$ran";
 				print " jobs are still running!      ";
 			}
-			sleep(30);
+			if ($serv == 3){
+                serv4chgrp();
+		    }
+			$wait_round++;
+			sleep(scheduler_backoff("active_jobs", $wait_round));
 		}
 		else {
 			print "\r\[$time\]\: no job is running!                           ";
+			if ($serv == 3){
+                serv4chgrp();
+		    }
 		}
 		@jobs = ();
 	} while ($job_count != 0);
@@ -800,7 +1235,6 @@ sub chr_name {
 	$time = scalar localtime();
 	my $file = shift; my $pre = shift;
 	my @content; my @line; my @id;
-#	print "chr_name\n";
 	if (-e $file){}
 	else {
 		return "no";

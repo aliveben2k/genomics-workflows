@@ -60,8 +60,8 @@ use Fcntl ':flock';
 my $home = (getpwuid $>)[7];
 my @tmp = split(/\//, $home);
 my $uid = $tmp[-1]; #Suppose to be your login name in the server
-if (-e "$home\/softwares\/qsub_subroutine.pl"){
-	require "$home\/softwares\/qsub_subroutine.pl";
+if (-e "$home\/software\/qsub_subroutine.pl"){
+	require "$home\/software\/qsub_subroutine.pl";
 }
 elsif (-e "$home\/qsub_subroutine.pl"){
 	require "$home\/qsub_subroutine.pl";

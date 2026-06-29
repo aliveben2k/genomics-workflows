@@ -258,6 +258,14 @@ perl GATK_pipeline_v4.0_gpu.pl \
     -esp 3 \
     -exc
 ```
+### Additional Resources
+
+The CNV annotation workflow utilizes reference resources from the gnomAD project. Necessary reference files, including structural variant reference datasets (e.g., `gnomad_v2.1_sv.sites.vcf.gz`), can be downloaded from the gnomAD downloads page:
+
+https://gnomad.broadinstitute.org/downloads
+
+Please make sure that both the VCF file and its corresponding index file (`*.tbi`) are downloaded and placed in the appropriate directory before running the CNV annotation workflow.
+
 
 ---
 

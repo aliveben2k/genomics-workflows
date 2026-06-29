@@ -1,18 +1,33 @@
 # Genomics Analysis Pipelines
 
-Automated and reproducible bioinformatics workflows for whole-genome sequencing (WGS), population genomics, and evolutionary analyses on high-performance computing (HPC) environments.
+Automated and reproducible bioinformatics workflows for whole-genome sequencing (WGS), population genomics, and evolutionary genomics analyses on High-Performance Computing (HPC) environments.
+
+---
 
 ## Overview
 
-This repository contains a collection of automated analysis pipelines developed during large-scale genomic studies of adzuki bean (*Vigna angularis*) and related species.
+This repository contains a collection of automated bioinformatics workflows developed during large-scale genomic studies of adzuki bean (*Vigna angularis*) and related species.
 
-The workflows are designed to enable reproducible, end-to-end analyses of next-generation sequencing (NGS) datasets on HPC systems with minimal manual intervention.
+The core component of this repository is an automated GATK-based variant calling framework designed for large-scale next-generation sequencing (NGS) analyses on HPC systems. The pipeline enables end-to-end processing of raw sequencing data, allowing users to generate high-quality VCF files directly from raw FASTQ files using a single command line.
 
-Most pipelines support one-command execution and integrate widely used bioinformatics tools with custom Perl, R, and shell scripts.
+The automated GATK workflow supports:
+
+* Whole-genome sequencing (WGS)
+* Whole-exome sequencing (WES)
+* RAD-seq / DArT-seq data
+* GPU-accelerated variant calling using NVIDIA Parabricks
+* Incremental sample integration
+* Joint genotyping of hundreds to thousands of samples
+* Automated HPC job submission and dependency management
+* Germline CNV analysis
+
+In addition to variant calling, this repository also provides a collection of downstream population genomics and evolutionary genomics workflows for population structure analysis, demographic inference, phylogenetic reconstruction, selection scans, genotype imputation, and genome-wide association studies (GWAS).
+
+Most workflows support one-command execution and integrate widely used bioinformatics tools with custom Perl, R, and shell scripts to enable reproducible, end-to-end genomic analyses on HPC systems with minimal manual intervention.
 
 The repository was extensively used in population genomics studies, including:
 
-> Chien, C.-C. et al. *Science* (2025). A single domestication origin of adzuki bean in Japan and the evolution of domestication genes.
+> Chien, C.-C., Seiko, T., Muto, C., Ariga, H., Wang, Y.-C., Chang, C.-H., Sakai, H., Naito, K., & Lee, C.-R. (2025). *A single domestication origin of adzuki bean in Japan and the evolution of domestication genes*. **Science, 388**(6750), eads2871.
 
 ---
 
@@ -20,12 +35,14 @@ The repository was extensively used in population genomics studies, including:
 
 * Automated end-to-end genomic analyses
 * Reproducible HPC workflows
+* One-command execution from raw FASTQ files to final VCF files
 * Support for PBS, PBS Pro, and Slurm job schedulers
-* One-command execution for complex analyses
-* Modular pipeline structure
-* Designed for large-scale WGS datasets
-* Extensive use in published peer-reviewed studies
 * Configuration-driven deployment across multiple HPC environments
+* Automated HPC job submission and dependency management
+* Modular pipeline architecture
+* GPU-accelerated variant calling support
+* Designed for large-scale WGS datasets
+* Extensively used in peer-reviewed publications
 
 ---
 
@@ -48,44 +65,51 @@ The workflow framework supports configuration-driven deployment across multiple 
 
 The server configuration file can be provided in one of the following ways (listed in order of priority):
 
-1. Explicitly specify the configuration file using the `-cj_server` argument in `create_job_v2.pl`:
+### 1. Explicitly specify the configuration file
 
 ```bash
 perl create_job_v2.pl -cj_server /path/to/qsub_server.conf
 ```
 
-2. Place the configuration file at:
+### 2. Place the configuration file in the user's software directory
 
 ```text
 $HOME/software/qsub_server.conf
 ```
 
-3. Place the configuration file in the current working directory:
+### 3. Place the configuration file in the current working directory
 
 ```text
 ./qsub_server.conf
 ```
 
-This configuration mechanism allows the same workflow to be easily deployed across different HPC clusters without modifying the source code.
+This configuration mechanism allows the same workflow framework to be easily deployed across different HPC clusters without modifying the source code.
 
 ---
 
 ## Pipeline Modules
 
-| Directory | Description                                               |
-| --------- | --------------------------------------------------------- |
-| GATK4     | Variant calling workflow for whole-genome sequencing data |
-| ADMIXTURE | Population structure analysis                             |
-| GEMMA     | GWAS and mixed model analyses                             |
-| MSMC      | Demographic history inference                             |
-| Relate    | Genealogical and demographic analyses                     |
-| TreeMix   | Population split and migration analyses                   |
-| rehh      | Selection scan analyses (EHH/iHS/XP-EHH)                  |
-| Beagle    | Genotype phasing and imputation                           |
-| IQ-TREE   | Phylogenetic analyses                                     |
-| STRUCTURE | Population assignment analyses                            |
-| PCA       | Principal component analyses                              |
-| FST       | Population differentiation analyses                       |
+### Variant Calling
+
+| Directory | Description                                                         |
+| --------- | ------------------------------------------------------------------- |
+| GATK4     | Automated variant calling workflow for whole-genome sequencing data |
+
+### Downstream Population Genomics and Evolutionary Genomics Analyses
+
+| Directory | Description                                                     |
+| --------- | --------------------------------------------------------------- |
+| ADMIXTURE | Population structure analysis                                   |
+| GEMMA     | Genome-wide association studies (GWAS) and mixed model analyses |
+| MSMC      | Demographic history inference                                   |
+| Relate    | Genealogical and demographic analyses                           |
+| TreeMix   | Population split and migration analyses                         |
+| rehh      | Selection scan analyses (EHH/iHS/XP-EHH)                        |
+| Beagle    | Genotype phasing and imputation                                 |
+| IQ-TREE   | Phylogenetic analyses                                           |
+| STRUCTURE | Population assignment analyses                                  |
+| PCA       | Principal component analyses                                    |
+| FST       | Population differentiation analyses                             |
 
 ---
 
@@ -130,9 +154,11 @@ Visualization and Statistical Analyses
 Examples include:
 
 * GATK4
-* BWA
+* BWA / BWA-MEM2
 * SAMtools
 * BCFtools
+* VCFtools
+* BEDTools
 * ADMIXTURE
 * GEMMA
 * MSMC2
@@ -141,11 +167,13 @@ Examples include:
 * Beagle
 * IQ-TREE
 * PLINK
-* VCFtools
-* BEDTools
+* FastQC
+* fastp
+* Trimmomatic
+* NVIDIA Parabricks
 * R (various packages)
 
-Please refer to each module directory for specific requirements.
+Please refer to each module directory for specific software requirements and installation instructions.
 
 ---
 
@@ -153,21 +181,23 @@ Please refer to each module directory for specific requirements.
 
 If you use these pipelines in your research, please cite:
 
-Chien, C.-C. et al. (2025). *A single domestication origin of adzuki bean in Japan and the evolution of domestication genes*. Science.
+Chien, C.-C., Seiko, T., Muto, C., Ariga, H., Wang, Y.-C., Chang, C.-H., Sakai, H., Naito, K., & Lee, C.-R. (2025). *A single domestication origin of adzuki bean in Japan and the evolution of domestication genes*. **Science, 388**(6750), eads2871. https://doi.org/10.1126/science.ads2871
 
 ---
 
 ## Author
 
-Chih-Cheng Chien
+**Chih-Cheng Chien**
 
 National Agriculture and Food Research Organization (NARO), Japan
 
-Research interests:
+### Research Interests
 
+* Bioinformatics
+* Computational genomics
 * Population genomics
 * Evolutionary genomics
-* Bioinformatics
 * Genome editing
-* Crop domestication
-
+* Functional genomics
+* HPC workflow automation
+* Crop domestication and evolution

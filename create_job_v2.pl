@@ -45,17 +45,17 @@ my @server = `ip route get 1.2.3.4 \| awk \'\{print \$7\}\'`;
 chomp(@server);
 my $serv = -1;
 foreach (@server){
-	if ($_ =~ /140.112.2/){
+	if ($_ =~ /XXX.XXX.XXX/){
 		$serv = 2;
-		print BOLD "NTU server is detected. Set to the server\'s PBS job setting.\n\n", RESET;
+		print BOLD "Set to the server\'s PBS job setting.\n\n", RESET;
 	}
-    if ($_ =~ /172.28.111/){
+    if ($_ =~ /XXX.XXX.XXX/){
 		$serv = 3;
-		print BOLD "Taiwania server is detected. Set to the server\'s Slurm job setting.\n\n", RESET;
+		print BOLD "Set to the server\'s Slurm job setting.\n\n", RESET;
 	}
-	if ($_ =~ /150.26.179/){
+	if ($_ =~ /XXX.XXX.XXX/){
 		$serv = 4;
-		print BOLD "Shiho server is detected. Set to the server\'s PBS_special job setting.\n\n", RESET;
+		print BOLD "Set to the server\'s PBS_special job setting.\n\n", RESET;
 	}
 }
 if ($serv == -1){

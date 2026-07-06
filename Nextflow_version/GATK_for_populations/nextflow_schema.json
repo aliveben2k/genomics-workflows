@@ -1,0 +1,628 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://raw.githubusercontent.com/nf-core/gatkpopulation/master/nextflow_schema.json",
+    "title": "nf-core/gatkpopulation pipeline parameters",
+    "description": "GATK and Parabricks germline variant and CNV pipeline",
+    "type": "object",
+    "$defs": {
+        "input_output_options": {
+            "title": "Input/output options",
+            "type": "object",
+            "fa_icon": "fas fa-terminal",
+            "description": "Define where the pipeline should find input data and save output data.",
+            "required": ["outdir"],
+            "properties": {
+                "input": {
+                    "type": "string",
+                    "format": "file-path",
+                    "exists": true,
+                    "mimetype": "text/csv",
+                    "pattern": "^\\S+\\.csv$",
+                    "description": "Stage-specific CSV input manifest.",
+                    "help_text": "Stages 0-2 use sample,fastq_1,fastq_2; stage 3 uses sample,bam,bai; stage 4 uses sample,gvcf,tbi; stage 5 uses contig,genomicsdb; and stage 6 uses contig,vcf,tbi. Input is optional only when starting and stopping at stage 0.",
+                    "fa_icon": "fas fa-file-csv"
+                },
+                "start_stage": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 6,
+                    "default": 0,
+                    "description": "First stage to execute.",
+                    "help_text": "0 reference, 1 trimming, 2 BAM, 3 sample GVCF, 4 GenomicsDB, 5 raw VCF, 6 filtered VCF.",
+                    "fa_icon": "fas fa-play"
+                },
+                "stop_stage": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 6,
+                    "description": "Last stage to execute.",
+                    "help_text": "Defaults to stage 6 and must not be lower than --start_stage.",
+                    "fa_icon": "fas fa-stop"
+                },
+                "adapter_fasta": {
+                    "type": "string",
+                    "format": "file-path",
+                    "exists": true,
+                    "pattern": "^\\S+\\.f(ast)?a$",
+                    "description": "Optional FASTA file containing adapter sequences supplied to fastp.",
+                    "fa_icon": "fas fa-file"
+                },
+                "trimmer": {
+                    "type": "string",
+                    "enum": ["fastp", "trimmomatic"],
+                    "default": "fastp",
+                    "description": "Read-trimming program to use.",
+                    "help_text": "Use `fastp` (default) or `trimmomatic`. Exactly one trimmer is run for each pipeline execution.",
+                    "fa_icon": "fas fa-cut"
+                },
+                "trimmomatic_args": {
+                    "type": "string",
+                    "default": "SLIDINGWINDOW:4:20 MINLEN:36",
+                    "description": "Ordered trimming steps passed to Trimmomatic.",
+                    "help_text": "Only used when `--trimmer trimmomatic` is selected. Replace the default with any valid Trimmomatic step string, for example `ILLUMINACLIP:/absolute/path/adapters.fa:2:30:10 SLIDINGWINDOW:4:20 MINLEN:36`.",
+                    "fa_icon": "fas fa-sliders-h"
+                },
+                "run_serial": {
+                    "type": "string",
+                    "pattern": "^[A-Z][A-Z0-9]{3}$",
+                    "description": "Optional four-character serial used to identify a run.",
+                    "help_text": "The first character must be A-Z and the remaining characters must be A-Z or 0-9. If omitted, the bundled run_pipeline.sh launcher generates an unused serial and appends it to the work and output roots. The serial is retained with `-resume`.",
+                    "fa_icon": "fas fa-hashtag"
+                },
+                "outdir": {
+                    "type": "string",
+                    "format": "directory-path",
+                    "description": "The output directory where the results will be saved. You have to use absolute paths to storage on Cloud infrastructure.",
+                    "fa_icon": "fas fa-folder-open"
+                },
+                "email": {
+                    "type": "string",
+                    "description": "Email address for completion summary.",
+                    "fa_icon": "fas fa-envelope",
+                    "help_text": "Set this parameter to your e-mail address to get a summary e-mail with details of the run sent to you when the workflow exits. If set in your user config file (`~/.nextflow/config`) then you don't need to specify this on the command line for every run.",
+                    "pattern": "^([a-zA-Z0-9_\\-\\.]+)@([a-zA-Z0-9_\\-\\.]+)\\.([a-zA-Z]{2,5})$"
+                },
+                "multiqc_title": {
+                    "type": "string",
+                    "description": "MultiQC report title. Printed as page header, used for filename if not otherwise specified.",
+                    "fa_icon": "fas fa-file-signature"
+                }
+            }
+        },
+        "reference_genome_options": {
+            "title": "Reference genome options",
+            "type": "object",
+            "fa_icon": "fas fa-dna",
+            "description": "Reference genome related files and options required for the workflow.",
+            "properties": {
+                "genome": {
+                    "type": "string",
+                    "description": "Name of iGenomes reference.",
+                    "fa_icon": "fas fa-book",
+                    "help_text": "If using a reference genome configured in the pipeline using iGenomes, use this parameter to give the ID for the reference. This is then used to build the full paths for all required reference genome files e.g. `--genome GRCh38`. \n\nSee the [nf-core website docs](https://nf-co.re/usage/reference_genomes) for more details."
+                },
+                "fasta": {
+                    "type": "string",
+                    "format": "file-path",
+                    "exists": true,
+                    "mimetype": "text/plain",
+                    "pattern": "^\\S+\\.fn?a(sta)?$",
+                    "description": "Path to an uncompressed reference FASTA file.",
+                    "help_text": "Required for stages 0 and 2-5 unless supplied by --genome. Stage 0 creates the FASTA index, sequence dictionary, and BWA index. Later entry stages use existing reference companions.",
+                    "fa_icon": "far fa-file-code"
+                },
+                "fasta_fai": {
+                    "type": "string",
+                    "format": "file-path",
+                    "exists": true,
+                    "pattern": "^\\S+\\.fai$",
+                    "description": "Existing FASTA index for starts after stage 0.",
+                    "help_text": "Defaults to <fasta>.fai. Supply it explicitly when starting at stage 6 with `--gather_vcfs 6`; the contig order is used to arrange GatherVcfs inputs.",
+                    "fa_icon": "fas fa-file"
+                },
+                "fasta_dict": {
+                    "type": "string",
+                    "format": "file-path",
+                    "exists": true,
+                    "pattern": "^\\S+\\.dict$",
+                    "description": "Existing GATK sequence dictionary for starts after stage 0.",
+                    "help_text": "Defaults to the FASTA basename with .dict.",
+                    "fa_icon": "fas fa-file"
+                },
+                "bwa_index": {
+                    "type": "string",
+                    "format": "directory-path",
+                    "exists": true,
+                    "description": "Optional directory containing a traditional BWA index.",
+                    "help_text": "The directory must contain the `.amb`, `.ann`, `.bwt`, `.pac`, and `.sa` files. This traditional BWA index is used by both CPU BWA-MEM and Parabricks.",
+                    "fa_icon": "fas fa-folder-open"
+                },
+                "known_sites": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "format": "file-path",
+                        "exists": true,
+                        "pattern": "^\\S+\\.vcf\\.gz$"
+                    },
+                    "default": [],
+                    "description": "Known-sites VCF files used for BQSR.",
+                    "help_text": "Each `.vcf.gz` file must have an adjacent `.vcf.gz.tbi` index. If omitted, both CPU and GPU branches skip BQSR.",
+                    "fa_icon": "fas fa-list"
+                },
+                "intervals": {
+                    "type": "string",
+                    "format": "file-path",
+                    "exists": true,
+                    "description": "Optional interval file restricting BQSR and per-sample GVCF calling.",
+                    "fa_icon": "fas fa-map-marker-alt"
+                },
+                "igenomes_ignore": {
+                    "type": "boolean",
+                    "description": "Do not load the iGenomes reference config.",
+                    "fa_icon": "fas fa-ban",
+                    "hidden": true,
+                    "help_text": "Do not load `igenomes.config` when running the pipeline. You may choose this option if you observe clashes between custom parameters and those supplied in `igenomes.config`."
+                },
+                "igenomes_base": {
+                    "type": "string",
+                    "description": "The base path to the igenomes reference files",
+                    "fa_icon": "fas fa-ban",
+                    "hidden": true,
+                    "default": "s3://ngi-igenomes/igenomes/"
+                }
+            }
+        },
+        "preprocessing_options": {
+            "title": "Read preprocessing options",
+            "type": "object",
+            "fa_icon": "fas fa-microchip",
+            "description": "CPU preprocessing by default, or NVIDIA Parabricks when the `gpu` profile is selected with Docker, Singularity, or Apptainer.",
+            "properties": {
+                "sequencing_type": {
+                    "type": "string",
+                    "enum": ["wgs", "wes", "rad", "amp"],
+                    "default": "wgs",
+                    "description": "Input sequencing design controlling duplicate marking.",
+                    "help_text": "`wgs` and `wes` run MarkDuplicates. `rad` covers RAD-seq, GBS, and ddRAD; `amp` covers amplicon sequencing. The representative-sequencing modes skip CPU MarkDuplicates, add Parabricks fq2bam `--no-markdups`, and omit `_MD` from final BAM names.",
+                    "fa_icon": "fas fa-dna"
+                },
+                "wgs": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Convenience alias for `--sequencing_type wgs`.",
+                    "fa_icon": "fas fa-dna"
+                },
+                "wes": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Convenience alias for `--sequencing_type wes`; duplicate marking remains enabled.",
+                    "fa_icon": "fas fa-dna"
+                },
+                "rad": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Convenience alias for `--sequencing_type rad`; duplicate marking is disabled.",
+                    "help_text": "Use for RAD-seq, GBS, ddRAD, and related reduced-representation libraries.",
+                    "fa_icon": "fas fa-dna"
+                },
+                "amp": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Convenience alias for `--sequencing_type amp`; duplicate marking is disabled.",
+                    "help_text": "Use for amplicon sequencing libraries in which duplicate removal is inappropriate.",
+                    "fa_icon": "fas fa-dna"
+                },
+                "gpu_fallback": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Rerun unsuccessful GPU samples with the CPU workflow.",
+                    "fa_icon": "fas fa-undo"
+                },
+                "gpu_count": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 4,
+                    "description": "Number of GPUs requested by each Parabricks task.",
+                    "help_text": "Defaults to 4. This controls the Slurm `--gres=gpu:N` request, Nextflow accelerator value, and Parabricks `--num-gpus`.",
+                    "fa_icon": "fas fa-microchip"
+                },
+                "gpu_max_submit_await": {
+                    "type": "string",
+                    "default": "30 min",
+                    "pattern": "^\\d+(\\.\\d+)?\\s*(ms|s|sec|second|seconds|m|min|minute|minutes|h|hour|hours|d|day|days)$",
+                    "description": "Maximum time a GPU task may remain queued before CPU fallback.",
+                    "fa_icon": "fas fa-clock"
+                },
+                "parabricks_sif": {
+                    "type": "string",
+                    "format": "file-path",
+                    "exists": true,
+                    "pattern": "^\\S+\\.sif$",
+                    "description": "Optional local Parabricks Singularity/Apptainer image.",
+                    "help_text": "Used only with the `singularity` or `apptainer` profile. Docker GPU runs use the NVIDIA Parabricks image.",
+                    "fa_icon": "fas fa-cube"
+                }
+            }
+        },
+        "variant_calling_options": {
+            "title": "Variant calling options",
+            "type": "object",
+            "fa_icon": "fas fa-dna",
+            "description": "Options controlling per-contig joint genotyping.",
+            "properties": {
+                "all_sites": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Include loci found to be non-variant after joint genotyping.",
+                    "help_text": "Regular variant-only VCFs are generated by default. With `--all_sites`, GATK4 GenotypeGVCFs adds `--include-non-variant-sites true`. Joint genotyping after GenomicsDBImport always uses CPU GATK, including under the GPU profile.",
+                    "fa_icon": "fas fa-list"
+                },
+                "subset_samples": {
+                    "type": "string",
+                    "format": "file-path",
+                    "exists": true,
+                    "mimetype": "text/csv",
+                    "pattern": "^\\S+\\.csv$",
+                    "description": "Optional one-column CSV listing samples to joint genotype.",
+                    "help_text": "The CSV must have the header `sample` and one GenomicsDB sample name per row. When supplied for stage 5, SelectVariants writes a subset GVCF for each contig under 05.1-subset before GenotypeGVCFs. The GenomicsDB is read-only and is not modified.",
+                    "fa_icon": "fas fa-users"
+                },
+                "gather_vcfs": {
+                    "type": "integer",
+                    "enum": [5, 6],
+                    "description": "Optionally gather per-contig VCFs into one genome-wide VCF after stage 5 or stage 6.",
+                    "help_text": "Use `--gather_vcfs 5` to create 05-raw_vcf/all.raw.vcf.gz and filter only that gathered VCF at stage 6. Use `--gather_vcfs 6` to filter each contig first and then create 06-filtered_vcf/all.filtered.vcf.gz. Omit this option to retain per-contig processing only.",
+                    "fa_icon": "fas fa-object-group"
+                },
+                "filter_vcf": {
+                    "type": "string",
+                    "enum": ["biallele", "monobi"],
+                    "default": "biallele",
+                    "description": "Named bcftools view filtering preset.",
+                    "help_text": "`biallele` retains biallelic SNPs with F_MISSING < 0.1, QUAL >= 30, and INFO/DP > 3. `monobi` retains monomorphic reference sites plus biallelic SNPs, applies QUAL >= 30 only to SNPs, removes indels, and applies the same missingness and depth thresholds. Use `monobi` with `--all_sites` unless the stage-6 input already contains monomorphic records.",
+                    "fa_icon": "fas fa-filter"
+                },
+                "bcftools_view_args": {
+                    "type": "string",
+                    "description": "Arguments passed to bcftools view for per-contig VCF filtering.",
+                    "help_text": "Advanced override for `--filter_vcf`. The pipeline appends `--output-type z --write-index=tbi` to guarantee compressed, indexed VCF output. Supply any compatible bcftools view filtering or subsetting options here; omit output-type and write-index options. Set this to an empty string to retain all records while still producing a compressed indexed copy.",
+                    "fa_icon": "fas fa-filter"
+                }
+            }
+        },
+        "institutional_config_options": {
+            "title": "Institutional config options",
+            "type": "object",
+            "fa_icon": "fas fa-university",
+            "description": "Parameters used to describe centralised config profiles. These should not be edited.",
+            "help_text": "The centralised nf-core configuration profiles use a handful of pipeline parameters to describe themselves. This information is then printed to the Nextflow log when you run a pipeline. You should not need to change these values when you run a pipeline.",
+            "properties": {
+                "custom_config_version": {
+                    "type": "string",
+                    "description": "Git commit id for Institutional configs.",
+                    "default": "master",
+                    "hidden": true,
+                    "fa_icon": "fas fa-users-cog"
+                },
+                "custom_config_base": {
+                    "type": "string",
+                    "description": "Base directory for Institutional configs.",
+                    "default": "https://raw.githubusercontent.com/nf-core/configs/master",
+                    "hidden": true,
+                    "help_text": "If you're running offline, Nextflow will not be able to fetch the institutional config files from the internet. If you don't need them, then this is not a problem. If you do need them, you should download the files from the repo and tell Nextflow where to find them with this parameter.",
+                    "fa_icon": "fas fa-users-cog"
+                },
+                "config_profile_name": {
+                    "type": "string",
+                    "description": "Institutional config name.",
+                    "hidden": true,
+                    "fa_icon": "fas fa-users-cog"
+                },
+                "config_profile_description": {
+                    "type": "string",
+                    "description": "Institutional config description.",
+                    "hidden": true,
+                    "fa_icon": "fas fa-users-cog"
+                },
+                "config_profile_contact": {
+                    "type": "string",
+                    "description": "Institutional config contact information.",
+                    "hidden": true,
+                    "fa_icon": "fas fa-users-cog"
+                },
+                "config_profile_url": {
+                    "type": "string",
+                    "description": "Institutional config URL link.",
+                    "hidden": true,
+                    "fa_icon": "fas fa-users-cog"
+                }
+            }
+        },
+        "slurm_options": {
+            "title": "Slurm options",
+            "type": "object",
+            "fa_icon": "fas fa-server",
+            "description": "Optional settings for the built-in Slurm executor profile.",
+            "properties": {
+                "slurm_queue": {
+                    "type": "string",
+                    "description": "Slurm partition supplied to sbatch.",
+                    "fa_icon": "fas fa-layer-group"
+                },
+                "slurm_account": {
+                    "type": "string",
+                    "description": "Slurm account supplied through --account.",
+                    "fa_icon": "fas fa-user"
+                },
+                "slurm_qos": {
+                    "type": "string",
+                    "description": "Slurm quality of service supplied through --qos.",
+                    "fa_icon": "fas fa-tachometer-alt"
+                },
+                "slurm_queue_size": {
+                    "type": "integer",
+                    "default": 100,
+                    "minimum": 1,
+                    "description": "Maximum number of tasks Nextflow may keep in the Slurm queue.",
+                    "fa_icon": "fas fa-list-ol"
+                }
+            }
+        },
+        "grid_executor_options": {
+            "title": "SGE, UGE, and PBS options",
+            "type": "object",
+            "fa_icon": "fas fa-server",
+            "description": "Optional settings for the built-in SGE, UGE, PBS/Torque, and PBS Pro executor profiles.",
+            "properties": {
+                "sge_queue": {
+                    "type": "string",
+                    "description": "SGE queue supplied to qsub.",
+                    "fa_icon": "fas fa-layer-group"
+                },
+                "sge_project": {
+                    "type": "string",
+                    "description": "SGE project supplied through -P.",
+                    "fa_icon": "fas fa-user"
+                },
+                "sge_penv": {
+                    "type": "string",
+                    "description": "SGE parallel environment used for multi-CPU tasks, for example smp.",
+                    "fa_icon": "fas fa-microchip"
+                },
+                "sge_cluster_options": {
+                    "type": "string",
+                    "description": "Additional qsub options applied to every SGE task.",
+                    "fa_icon": "fas fa-sliders-h"
+                },
+                "sge_gpu_cluster_options": {
+                    "type": "string",
+                    "description": "Site-specific SGE qsub resource options added only to GPU tasks.",
+                    "help_text": "GPU resource-complex names vary by cluster. Use `{gpu_count}` as a placeholder, for example `-l gpu={gpu_count}`.",
+                    "fa_icon": "fas fa-microchip"
+                },
+                "sge_queue_size": {
+                    "type": "integer",
+                    "default": 100,
+                    "minimum": 1,
+                    "description": "Maximum number of tasks Nextflow may keep in the SGE queue.",
+                    "fa_icon": "fas fa-list-ol"
+                },
+                "uge_queue": {
+                    "type": "string",
+                    "description": "UGE queue supplied to qsub.",
+                    "fa_icon": "fas fa-layer-group"
+                },
+                "uge_project": {
+                    "type": "string",
+                    "description": "UGE project supplied through -P.",
+                    "fa_icon": "fas fa-user"
+                },
+                "uge_penv": {
+                    "type": "string",
+                    "description": "UGE parallel environment used for multi-CPU tasks, for example smp.",
+                    "fa_icon": "fas fa-microchip"
+                },
+                "uge_cluster_options": {
+                    "type": "string",
+                    "description": "Additional qsub options applied to every UGE task.",
+                    "fa_icon": "fas fa-sliders-h"
+                },
+                "uge_gpu_cluster_options": {
+                    "type": "string",
+                    "description": "Site-specific UGE qsub resource options added only to GPU tasks.",
+                    "help_text": "GPU resource-complex names vary by cluster. Use `{gpu_count}` as a placeholder, for example `-l gpu={gpu_count}`.",
+                    "fa_icon": "fas fa-microchip"
+                },
+                "uge_queue_size": {
+                    "type": "integer",
+                    "default": 100,
+                    "minimum": 1,
+                    "description": "Maximum number of tasks Nextflow may keep in the UGE queue.",
+                    "fa_icon": "fas fa-list-ol"
+                },
+                "pbs_queue": {
+                    "type": "string",
+                    "description": "PBS/Torque queue supplied to qsub.",
+                    "fa_icon": "fas fa-layer-group"
+                },
+                "pbs_account": {
+                    "type": "string",
+                    "description": "PBS/Torque account supplied through -A.",
+                    "fa_icon": "fas fa-user"
+                },
+                "pbs_cluster_options": {
+                    "type": "string",
+                    "description": "Additional qsub options applied to every PBS/Torque task.",
+                    "fa_icon": "fas fa-sliders-h"
+                },
+                "pbs_gpu_cluster_options": {
+                    "type": "string",
+                    "description": "Site-specific PBS/Torque qsub resource options added only to GPU tasks.",
+                    "help_text": "Use `{gpu_count}` as a placeholder for the value of `--gpu_count`.",
+                    "fa_icon": "fas fa-microchip"
+                },
+                "pbs_queue_size": {
+                    "type": "integer",
+                    "default": 100,
+                    "minimum": 1,
+                    "description": "Maximum number of tasks Nextflow may keep in the PBS/Torque queue.",
+                    "fa_icon": "fas fa-list-ol"
+                },
+                "pbspro_queue": {
+                    "type": "string",
+                    "description": "PBS Pro queue supplied to qsub.",
+                    "fa_icon": "fas fa-layer-group"
+                },
+                "pbspro_account": {
+                    "type": "string",
+                    "description": "PBS Pro account supplied through -A.",
+                    "fa_icon": "fas fa-user"
+                },
+                "pbspro_cluster_options": {
+                    "type": "string",
+                    "description": "Additional qsub options applied to every PBS Pro task.",
+                    "fa_icon": "fas fa-sliders-h"
+                },
+                "pbspro_gpu_cluster_options": {
+                    "type": "string",
+                    "description": "Site-specific PBS Pro qsub resource options added only to GPU tasks.",
+                    "help_text": "Use `{gpu_count}` as a placeholder for the value of `--gpu_count`.",
+                    "fa_icon": "fas fa-microchip"
+                },
+                "pbspro_queue_size": {
+                    "type": "integer",
+                    "default": 100,
+                    "minimum": 1,
+                    "description": "Maximum number of tasks Nextflow may keep in the PBS Pro queue.",
+                    "fa_icon": "fas fa-list-ol"
+                }
+            }
+        },
+        "generic_options": {
+            "title": "Generic options",
+            "type": "object",
+            "fa_icon": "fas fa-file-import",
+            "description": "Less common options for the pipeline, typically set in a config file.",
+            "help_text": "These options are common to all nf-core pipelines and allow you to customise some of the core preferences for how the pipeline runs.\n\nTypically these options would be set in a Nextflow config file loaded for all pipeline runs, such as `~/.nextflow/config`.",
+            "properties": {
+                "version": {
+                    "type": "boolean",
+                    "description": "Display version and exit.",
+                    "fa_icon": "fas fa-question-circle",
+                    "hidden": true
+                },
+                "publish_dir_mode": {
+                    "type": "string",
+                    "default": "copy",
+                    "description": "Method used to save pipeline results to output directory.",
+                    "help_text": "The Nextflow `publishDir` option specifies which intermediate files should be saved to the output directory. This option tells the pipeline what method should be used to move these files. See [Nextflow docs](https://www.nextflow.io/docs/latest/process.html#publishdir) for details.",
+                    "fa_icon": "fas fa-copy",
+                    "enum": ["symlink", "rellink", "link", "copy", "copyNoFollow", "move"],
+                    "hidden": true
+                },
+                "email_on_fail": {
+                    "type": "string",
+                    "description": "Email address for completion summary, only when pipeline fails.",
+                    "fa_icon": "fas fa-exclamation-triangle",
+                    "pattern": "^([a-zA-Z0-9_\\-\\.]+)@([a-zA-Z0-9_\\-\\.]+)\\.([a-zA-Z]{2,5})$",
+                    "help_text": "An email address to send a summary email to when the pipeline is completed - ONLY sent if the pipeline does not exit successfully.",
+                    "hidden": true
+                },
+                "plaintext_email": {
+                    "type": "boolean",
+                    "description": "Send plain-text email instead of HTML.",
+                    "fa_icon": "fas fa-remove-format",
+                    "hidden": true
+                },
+                "max_multiqc_email_size": {
+                    "type": "string",
+                    "description": "File size limit when attaching MultiQC reports to summary emails.",
+                    "pattern": "^\\d+(\\.\\d+)?\\.?\\s*(K|M|G|T)?B$",
+                    "default": "25.MB",
+                    "fa_icon": "fas fa-file-upload",
+                    "hidden": true
+                },
+                "monochrome_logs": {
+                    "type": "boolean",
+                    "description": "Do not use coloured log outputs.",
+                    "fa_icon": "fas fa-palette",
+                    "hidden": true
+                },
+                "multiqc_config": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "Custom config file to supply to MultiQC.",
+                    "fa_icon": "fas fa-cog",
+                    "hidden": true
+                },
+                "multiqc_logo": {
+                    "type": "string",
+                    "description": "Custom logo file to supply to MultiQC. File name must also be set in the MultiQC config file",
+                    "fa_icon": "fas fa-image",
+                    "hidden": true
+                },
+                "multiqc_methods_description": {
+                    "type": "string",
+                    "description": "Custom MultiQC yaml file containing HTML including a methods description.",
+                    "fa_icon": "fas fa-cog"
+                },
+                "validate_params": {
+                    "type": "boolean",
+                    "description": "Boolean whether to validate parameters against the schema at runtime",
+                    "default": true,
+                    "fa_icon": "fas fa-check-square",
+                    "hidden": true
+                },
+                "pipelines_testdata_base_path": {
+                    "type": "string",
+                    "fa_icon": "far fa-check-circle",
+                    "description": "Base URL or local path to location of pipeline test dataset files",
+                    "default": "https://raw.githubusercontent.com/nf-core/test-datasets/",
+                    "hidden": true
+                },
+                "trace_report_suffix": {
+                    "type": "string",
+                    "fa_icon": "far calendar",
+                    "description": "Suffix to add to the trace report filename. Default is the date and time in the format yyyy-MM-dd_HH-mm-ss.",
+                    "hidden": true
+                },
+                "help": {
+                    "type": ["boolean", "string"],
+                    "description": "Display the help message."
+                },
+                "help_full": {
+                    "type": "boolean",
+                    "description": "Display the full detailed help message."
+                },
+                "show_hidden": {
+                    "type": "boolean",
+                    "description": "Display hidden parameters in the help message (only works when --help or --help_full are provided)."
+                }
+            }
+        }
+    },
+    "allOf": [
+        {
+            "$ref": "#/$defs/input_output_options"
+        },
+        {
+            "$ref": "#/$defs/reference_genome_options"
+        },
+        {
+            "$ref": "#/$defs/preprocessing_options"
+        },
+        {
+            "$ref": "#/$defs/institutional_config_options"
+        },
+        {
+            "$ref": "#/$defs/slurm_options"
+        },
+        {
+            "$ref": "#/$defs/grid_executor_options"
+        },
+        {
+            "$ref": "#/$defs/generic_options"
+        }
+    ]
+}

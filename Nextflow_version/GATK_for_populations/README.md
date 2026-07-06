@@ -462,7 +462,15 @@ This pipeline uses infrastructure developed and maintained by the
 
 ## License
 
-This project is distributed under the [MIT License](LICENSE).
+Copyright (c) 2026 Chih-Cheng Chien and Research Center of Genetic Resources,
+NARO, Japan.
+
+This project is released under the MIT License. The license permits use,
+copying, modification, distribution, sublicensing, and sale, provided that the
+copyright and permission notices are retained. The software is provided
+without warranty.
+
+See [`LICENSE`](LICENSE) for the complete legal terms.
 
 ## Authors
 

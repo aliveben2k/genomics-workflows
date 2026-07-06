@@ -39,6 +39,7 @@ with the **modified versions provided in this pipeline/workspace**.
 - supports balanced repeated sampling with `-rs`
 - supports repeated CLUES2 runs with `-rc`
 - automatically summarizes CLUES2 and TreeViewSamples outputs
+- uses CLUES2 summary outputs for AIC-based evaluation and broken-stick breakpoint analysis
 
 ## Required Inputs
 
@@ -241,6 +242,13 @@ Unless `-nat` is used, the pipeline automatically generates summarized CLUES2 ou
 - `broken_stick_results.rda`
 - `broken_stick_results.txt`
 
+CLUES2 summary processing in this pipeline includes:
+
+- AIC-based evaluation across repeat runs
+- summarized allele-frequency trajectory plotting
+- broken-stick model fitting on summarized CLUES2 trajectories
+- breakpoint evaluation with `-npsi` controlling the number of breakpoints
+
 The old `-rpp` behavior has been removed.
 
 ### TreeViewSamples
@@ -305,4 +313,3 @@ If `-tvs_debug` is used, extra debug RDS files are written containing:
 - the pipeline renames contigs internally and writes `rename_chr.list`
 - incomplete poplabels stop the run before Relate analysis
 - use `--force` carefully for very large `-rc` values
-

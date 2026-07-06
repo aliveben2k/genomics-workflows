@@ -13,7 +13,7 @@ else {
 	die "Cannot find required subroutine file: qsub_subroutine.pl\n";
 }
 
-my $o_path; my $hap = 0; my $in_path; my $list; my $pos;
+my $o_path; my $hap = 0; my $in_path; my $list; my $pos; my $out_chr; my $tag = "";
 for (my $i=0; $i<=$#ARGV; $i++){
 	if ($ARGV[$i] eq "\-i"){ 
 		$in_path = $ARGV[$i+1]; #input path+prefix
@@ -39,6 +39,12 @@ for (my $i=0; $i<=$#ARGV; $i++){
 	}
 	if ($ARGV[$i] eq "\-pos"){
         $pos = $ARGV[$i+1];
+	}
+	if ($ARGV[$i] eq "\-chr"){
+        $out_chr = $ARGV[$i+1];
+	}
+	if ($ARGV[$i] eq "\-tag"){
+        $tag = $ARGV[$i+1];
 	}
 	if ($ARGV[$i] eq "\-hap"){ #if haploid
         $hap = 1;
@@ -99,7 +105,11 @@ if (-e "$in_path.haps"){
         }
     }
     close(HAPS);
-    open(OUT, ">$o_path\/chr$chr\_$pos.txt") || die "Cannot write $o_path\/chr$chr\_$pos.txt: $!\n";
+    die "Cannot find position $pos in $in_path.haps.\n" unless @outdata;
+    $chr = $out_chr if defined $out_chr && $out_chr ne "";
+    my $suffix = "";
+    $suffix = "_$tag" if defined $tag && $tag ne "";
+    open(OUT, ">$o_path\/chr$chr\_$pos$suffix.txt") || die "Cannot write $o_path\/chr$chr\_$pos$suffix.txt: $!\n";
     print OUT join("\n", @outdata), "\n";
     close(OUT);
     #calculate allele frequency
@@ -110,11 +120,9 @@ if (-e "$in_path.haps"){
         }
     }
     my $ratio = sprintf "%.4f", $derive_no / scalar(@outdata);
-    open(OUT2, ">$o_path\/chr$chr\_$pos\_freq.txt") || die "Cannot write $o_path\/chr$chr\_$pos\_freq.txt: $!\n";
+    open(OUT2, ">$o_path\/chr$chr\_$pos$suffix\_freq.txt") || die "Cannot write $o_path\/chr$chr\_$pos$suffix\_freq.txt: $!\n";
     print OUT2 $ratio;
     close(OUT2);
 }
-
-
 
 

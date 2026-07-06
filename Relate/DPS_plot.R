@@ -114,7 +114,7 @@ for (i in 1:length(files)){
 data.all[, 4:ncol(data.all)] <- -(data.all[, 4:ncol(data.all)])
 save(data.all, file = paste0(path,".rda"))
 
-chr_len <- data.all %>% group_by(Chr) %>% summarise(chr_len=max(pos, na.rm = TRUE))
+chr_len <- data.all %>% group_by(Chr) %>% summarise(chr_len=max(pos, na.rm = TRUE), .groups = "drop")
 chr_len.tmp <- c()
 for (i in 1:length(chr.name.order)){
   chr_len.tmp <- rbind(chr_len.tmp, chr_len[chr_len$Chr == chr.name.order[i],])

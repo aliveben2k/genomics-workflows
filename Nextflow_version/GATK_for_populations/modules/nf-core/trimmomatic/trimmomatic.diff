@@ -1,0 +1,100 @@
+Changes in component 'nf-core/trimmomatic'
+Changes in 'trimmomatic/main.nf':
+--- modules/nf-core/trimmomatic/main.nf
++++ modules/nf-core/trimmomatic/main.nf
+@@ -11,7 +11,7 @@
+     tuple val(meta), path(reads)
+ 
+     output:
+-    tuple val(meta), path("*.paired.trim*.fastq.gz")   , emit: trimmed_reads
++    tuple val(meta), path("*.fastq.trimmed.gz")        , emit: trimmed_reads
+     tuple val(meta), path("*.unpaired.trim_*.fastq.gz"), emit: unpaired_reads, optional:true
+     tuple val(meta), path("*_trim.log")                , emit: trim_log
+     tuple val(meta), path("*_out.log")                 , emit: out_log
+@@ -26,8 +26,8 @@
+     def prefix = task.ext.prefix ?: "${meta.id}"
+     def trimmed = meta.single_end ? "SE" : "PE"
+     def output = meta.single_end ?
+-        "${prefix}.SE.paired.trim.fastq.gz" // HACK to avoid unpaired and paired in the trimmed_reads output
+-        : "${prefix}.paired.trim_1.fastq.gz ${prefix}.unpaired.trim_1.fastq.gz ${prefix}.paired.trim_2.fastq.gz ${prefix}.unpaired.trim_2.fastq.gz"
++        "${prefix}.fastq.trimmed.gz"
++        : "${prefix}_R1.fastq.trimmed.gz ${prefix}.unpaired.trim_1.fastq.gz ${prefix}_R2.fastq.trimmed.gz ${prefix}.unpaired.trim_2.fastq.gz"
+     def qual_trim = task.ext.args2 ?: ''
+     """
+     trimmomatic \\
+@@ -45,10 +45,10 @@
+     def prefix = task.ext.prefix ?: "${meta.id}"
+ 
+     if (meta.single_end) {
+-        output_command = "echo '' | gzip > ${prefix}.SE.paired.trim.fastq.gz"
++        output_command = "echo '' | gzip > ${prefix}.fastq.trimmed.gz"
+     } else {
+-        output_command  = "echo '' | gzip > ${prefix}.paired.trim_1.fastq.gz\n"
+-        output_command += "echo '' | gzip > ${prefix}.paired.trim_2.fastq.gz\n"
++        output_command  = "echo '' | gzip > ${prefix}_R1.fastq.trimmed.gz\n"
++        output_command += "echo '' | gzip > ${prefix}_R2.fastq.trimmed.gz\n"
+         output_command += "echo '' | gzip > ${prefix}.unpaired.trim_1.fastq.gz\n"
+         output_command += "echo '' | gzip > ${prefix}.unpaired.trim_2.fastq.gz"
+     }
+
+Changes in 'trimmomatic/meta.yml':
+--- modules/nf-core/trimmomatic/meta.yml
++++ modules/nf-core/trimmomatic/meta.yml
+@@ -34,10 +34,10 @@
+           description: |
+             Groovy Map containing sample information
+             e.g. [ id:'test', single_end:false ]
+-      - "*.paired.trim*.fastq.gz":
++      - "*.fastq.trimmed.gz":
+           type: file
+-          description: The trimmed/modified paired end fastq reads
+-          pattern: "*.paired.trim*.fastq.gz"
++          description: The trimmed reads retained for downstream analysis
++          pattern: "*.fastq.trimmed.gz"
+           ontologies:
+             - edam: http://edamontology.org/format_3989 # GZIP format
+   unpaired_reads:
+
+Changes in 'trimmomatic/tests/main.nf.test.snap':
+--- modules/nf-core/trimmomatic/tests/main.nf.test.snap
++++ modules/nf-core/trimmomatic/tests/main.nf.test.snap
+@@ -8,7 +8,7 @@
+                             "id": "test",
+                             "single_end": true
+                         },
+-                        "test.SE.paired.trim.fastq.gz:md5,68b329da9893e34099c7d8ad5cb9c940"
++                        "test.fastq.trimmed.gz:md5,68b329da9893e34099c7d8ad5cb9c940"
+                     ]
+                 ],
+                 "1": [
+@@ -81,7 +81,7 @@
+                             "id": "test",
+                             "single_end": true
+                         },
+-                        "test.SE.paired.trim.fastq.gz:md5,68b329da9893e34099c7d8ad5cb9c940"
++                        "test.fastq.trimmed.gz:md5,68b329da9893e34099c7d8ad5cb9c940"
+                     ]
+                 ],
+                 "unpaired_reads": [
+@@ -110,7 +110,7 @@
+                         "id": "test",
+                         "single_end": true
+                     },
+-                    "test.SE.paired.trim.fastq.gz:md5,e68abbd3b88f7ec12940a4f5c2b8bfb9"
++                    "test.fastq.trimmed.gz:md5,e68abbd3b88f7ec12940a4f5c2b8bfb9"
+                 ]
+             ],
+             [
+@@ -148,8 +148,8 @@
+                         "single_end": false
+                     },
+                     [
+-                        "test.paired.trim_1.fastq.gz:md5,a866e64f451745f176316d0df7d52b30",
+-                        "test.paired.trim_2.fastq.gz:md5,725d4ab909b39291ab56b090cab32075"
++                        "test_R1.fastq.trimmed.gz:md5,a866e64f451745f176316d0df7d52b30",
++                        "test_R2.fastq.trimmed.gz:md5,725d4ab909b39291ab56b090cab32075"
+                     ]
+                 ]
+             ],
+
+************************************************************

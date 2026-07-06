@@ -1,0 +1,170 @@
+{
+    "human - gvcf.gz": {
+        "content": [
+            {
+                "0": [
+                    [
+                        {
+                            "id": "test"
+                        },
+                        "test.genome.g.vcf.gz.tbi:md5,a581ec2827af89dbe82d09951c1725ec"
+                    ]
+                ],
+                "1": [
+                    
+                ],
+                "2": [
+                    [
+                        "PARABRICKS_INDEXGVCF",
+                        "parabricks",
+                        "4.6.0-1"
+                    ]
+                ],
+                "compatible_versions": [
+                    
+                ],
+                "gvcf_index": [
+                    [
+                        {
+                            "id": "test"
+                        },
+                        "test.genome.g.vcf.gz.tbi:md5,a581ec2827af89dbe82d09951c1725ec"
+                    ]
+                ],
+                "versions_parabricks": [
+                    [
+                        "PARABRICKS_INDEXGVCF",
+                        "parabricks",
+                        "4.6.0-1"
+                    ]
+                ]
+            }
+        ],
+        "meta": {
+            "nf-test": "0.9.3",
+            "nextflow": "25.10.2"
+        },
+        "timestamp": "2026-01-21T13:58:16.215530493"
+    },
+    "human - gvcf": {
+        "content": [
+            "test.genome.g.vcf.idx",
+            {
+                "versions_parabricks": [
+                    [
+                        "PARABRICKS_INDEXGVCF",
+                        "parabricks",
+                        "4.6.0-1"
+                    ]
+                ]
+            }
+        ],
+        "meta": {
+            "nf-test": "0.9.3",
+            "nextflow": "25.10.2"
+        },
+        "timestamp": "2026-01-21T13:58:05.439234325"
+    },
+    "human - gvcf - stub": {
+        "content": [
+            {
+                "0": [
+                    [
+                        {
+                            "id": "test"
+                        },
+                        "test.g.vcf.idx:md5,d41d8cd98f00b204e9800998ecf8427e"
+                    ]
+                ],
+                "1": [
+                    "compatible_versions.yml:md5,51b50a329fda5c8fa94994989e45aa9d"
+                ],
+                "2": [
+                    [
+                        "PARABRICKS_INDEXGVCF",
+                        "parabricks",
+                        "4.6.0-1"
+                    ]
+                ],
+                "compatible_versions": [
+                    "compatible_versions.yml:md5,51b50a329fda5c8fa94994989e45aa9d"
+                ],
+                "gvcf_index": [
+                    [
+                        {
+                            "id": "test"
+                        },
+                        "test.g.vcf.idx:md5,d41d8cd98f00b204e9800998ecf8427e"
+                    ]
+                ],
+                "versions_parabricks": [
+                    [
+                        "PARABRICKS_INDEXGVCF",
+                        "parabricks",
+                        "4.6.0-1"
+                    ]
+                ]
+            },
+            {
+                "PARABRICKS_INDEXGVCF": {
+                    "pbrun_version": "4.6.0-1",
+                    "compatible_with": {
+                        "GATK:": "4.3.0.0"
+                    }
+                }
+            }
+        ],
+        "meta": {
+            "nf-test": "0.9.3",
+            "nextflow": "25.10.2"
+        },
+        "timestamp": "2026-01-21T13:58:26.546322874"
+    },
+    "human - gvcf.gz - stub": {
+        "content": [
+            {
+                "0": [
+                    [
+                        {
+                            "id": "test"
+                        },
+                        "test.g.vcf.gz.tbi:md5,d41d8cd98f00b204e9800998ecf8427e"
+                    ]
+                ],
+                "1": [
+                    "compatible_versions.yml:md5,51b50a329fda5c8fa94994989e45aa9d"
+                ],
+                "2": [
+                    [
+                        "PARABRICKS_INDEXGVCF",
+                        "parabricks",
+                        "4.6.0-1"
+                    ]
+                ],
+                "compatible_versions": [
+                    "compatible_versions.yml:md5,51b50a329fda5c8fa94994989e45aa9d"
+                ],
+                "gvcf_index": [
+                    [
+                        {
+                            "id": "test"
+                        },
+                        "test.g.vcf.gz.tbi:md5,d41d8cd98f00b204e9800998ecf8427e"
+                    ]
+                ],
+                "versions_parabricks": [
+                    [
+                        "PARABRICKS_INDEXGVCF",
+                        "parabricks",
+                        "4.6.0-1"
+                    ]
+                ]
+            }
+        ],
+        "meta": {
+            "nf-test": "0.9.3",
+            "nextflow": "25.10.2"
+        },
+        "timestamp": "2026-01-21T13:58:37.469420609"
+    }
+}

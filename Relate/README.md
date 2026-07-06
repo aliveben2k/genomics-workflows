@@ -249,8 +249,6 @@ CLUES2 summary processing in this pipeline includes:
 - broken-stick model fitting on summarized CLUES2 trajectories
 - breakpoint evaluation with `-npsi` controlling the number of breakpoints
 
-The old `-rpp` behavior has been removed.
-
 ### TreeViewSamples
 
 The pipeline automatically summarizes repeat outputs and writes merged TreeViewSamples summary files.

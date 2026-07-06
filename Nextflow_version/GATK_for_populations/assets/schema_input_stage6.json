@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Stage 6 raw VCF input",
+  "type": "array",
+  "minItems": 1,
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "contig": {
+        "type": "string",
+        "pattern": "^\\S+$",
+        "meta": [
+          "id"
+        ]
+      },
+      "vcf": {
+        "type": "string",
+        "format": "file-path",
+        "exists": true,
+        "pattern": "^\\S+\\.vcf\\.gz$"
+      },
+      "tbi": {
+        "type": "string",
+        "format": "file-path",
+        "exists": true,
+        "pattern": "^\\S+\\.vcf\\.gz\\.tbi$"
+      }
+    },
+    "required": [
+      "contig",
+      "vcf",
+      "tbi"
+    ]
+  }
+}

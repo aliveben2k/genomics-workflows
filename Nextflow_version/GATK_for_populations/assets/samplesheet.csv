@@ -1,0 +1,4 @@
+sample,fastq_1,fastq_2
+T01,/lfs/chinc518/gatk_exp/test_data/SRR17929027_1.fastq.gz,/lfs/chinc518/gatk_exp/test_data/SRR17929027_2.fastq.gz
+T02,/lfs/chinc518/gatk_exp/test_data/SRR17929095_1.fastq.gz,/lfs/chinc518/gatk_exp/test_data/SRR17929095_2.fastq.gz
+T03,/lfs/chinc518/gatk_exp/test_data/SRR17929149_1.fastq.gz,/lfs/chinc518/gatk_exp/test_data/SRR17929149_2.fastq.gz

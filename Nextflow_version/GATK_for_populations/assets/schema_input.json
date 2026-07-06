@@ -1,0 +1,35 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://raw.githubusercontent.com/nf-core/gatkpopulation/master/assets/schema_input.json",
+    "title": "nf-core/gatkpopulation pipeline - params.input schema",
+    "description": "Schema for the file provided with params.input",
+    "type": "array",
+    "minItems": 1,
+    "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "sample": {
+                "type": "string",
+                "pattern": "^\\S+$",
+                "errorMessage": "Sample name must be provided and cannot contain spaces",
+                "meta": ["id"]
+            },
+            "fastq_1": {
+                "type": "string",
+                "format": "file-path",
+                "exists": true,
+                "pattern": "^([\\S\\s]*\\/)?[^\\s\\/]+\\.f(ast)?q(\\.trimmed)?\\.gz$",
+                "errorMessage": "FastQ file for reads 1 must be provided and end in '.fq.gz', '.fastq.gz', or '.fastq.trimmed.gz'"
+            },
+            "fastq_2": {
+                "type": "string",
+                "format": "file-path",
+                "exists": true,
+                "pattern": "^([\\S\\s]*\\/)?[^\\s\\/]+\\.f(ast)?q(\\.trimmed)?\\.gz$",
+                "errorMessage": "FastQ file for reads 2 must end in '.fq.gz', '.fastq.gz', or '.fastq.trimmed.gz'"
+            }
+        },
+        "required": ["sample", "fastq_1"]
+    }
+}

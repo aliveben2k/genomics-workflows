@@ -1,0 +1,109 @@
+# nf-core/gatkpopulation analysis parameter template
+#
+# Run with:
+#   ./run_pipeline.sh \
+#     -profile slurm,conda \
+#     -params-file assets/analysis.template.yml \
+#     -work-dir /data/work/gatkpopulation \
+#     --outdir /data/results/gatkpopulation
+#
+# Keep -profile, -work-dir, and the launcher base --outdir on the command line.
+
+# Input and stage range
+input: /absolute/path/samplesheet.csv
+start_stage: 0
+# null means run through stage 6.
+stop_stage: null
+
+# Reference
+fasta: /absolute/path/reference.fasta
+# These are generated at stage 0. When starting later, null means infer the
+# conventional adjacent path from the FASTA.
+fasta_fai: null
+fasta_dict: null
+# Required when starting at stage 1 or 2 and running stage 2.
+bwa_index: null
+
+# Read trimming
+trimmer: fastp
+adapter_fasta: null
+trimmomatic_args: "SLIDINGWINDOW:4:20 MINLEN:36"
+
+# Sequencing design: wgs, wes, rad, or amp
+# wgs/wes mark duplicates; rad/amp retain duplicates.
+sequencing_type: wgs
+
+# BAM preprocessing and GVCF calling
+# Each known-sites VCF requires an adjacent .tbi index.
+known_sites: []
+# Example:
+# known_sites:
+#   - /absolute/path/dbsnp.vcf.gz
+#   - /absolute/path/Mills_and_1000G.vcf.gz
+intervals: null
+
+# GPU behavior
+# GPU execution also requires a gpu profile and Docker/Singularity/Apptainer.
+gpu_fallback: true
+gpu_count: 4
+gpu_max_submit_await: "30 min"
+# Used only with Singularity or Apptainer GPU runs.
+parabricks_sif: null
+
+# Joint genotyping
+all_sites: false
+# Optional one-column CSV with the header: sample
+subset_samples: null
+
+# VCF filtering
+# biallele: biallelic SNPs
+# monobi: monomorphic reference sites plus biallelic SNPs, excluding indels
+filter_vcf: biallele
+# Advanced override for the selected preset. An empty string retains all
+# records; null uses filter_vcf.
+bcftools_view_args: null
+
+# Optional GATK GatherVcfs stage: null, 5, or 6
+# 5 gathers raw VCFs before filtering.
+# 6 gathers filtered per-contig VCFs.
+gather_vcfs: null
+
+# Output behavior
+publish_dir_mode: copy
+multiqc_title: null
+multiqc_config: null
+multiqc_logo: null
+multiqc_methods_description: null
+
+# Scheduler settings
+# Fill only the section matching the selected executor profile.
+slurm_queue: null
+slurm_account: null
+slurm_qos: null
+slurm_queue_size: 100
+
+sge_queue: null
+sge_project: null
+sge_penv: null
+sge_cluster_options: null
+sge_gpu_cluster_options: null
+sge_queue_size: 100
+
+uge_queue: null
+uge_project: null
+uge_penv: null
+uge_cluster_options: null
+uge_gpu_cluster_options: null
+uge_queue_size: 100
+
+pbs_queue: null
+pbs_account: null
+pbs_cluster_options: null
+pbs_gpu_cluster_options: null
+pbs_queue_size: 100
+
+pbspro_queue: null
+pbspro_account: null
+pbspro_cluster_options: null
+pbspro_gpu_cluster_options: null
+pbspro_queue_size: 100

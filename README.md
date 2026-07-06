@@ -92,9 +92,10 @@ This configuration mechanism allows the same workflow framework to be easily dep
 
 ### Variant Calling
 
-| Directory | Description                                                         |
-| --------- | ------------------------------------------------------------------- |
-| GATK4     | Automated variant calling workflow for whole-genome sequencing data |
+| Directory              | Description                                                                                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GATK4                  | Automated Perl-based variant calling workflow for whole-genome sequencing data                                                                         |
+| nf-core-gatkpopulation | Nextflow implementation supporting CPU/GPU germline calling, WGS/WES/RAD/amplicon data, population joint genotyping, and multiple HPC schedulers |
 
 ### Downstream Population Genomics and Evolutionary Genomics Analyses
 

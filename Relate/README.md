@@ -249,6 +249,8 @@ CLUES2 summary processing in this pipeline includes:
 - broken-stick model fitting on summarized CLUES2 trajectories
 - breakpoint evaluation with `-npsi` controlling the number of breakpoints
 
+The old `-rpp` behavior has been removed.
+
 ### TreeViewSamples
 
 The pipeline automatically summarizes repeat outputs and writes merged TreeViewSamples summary files.
@@ -270,7 +272,7 @@ If `-tvs_debug` is used, extra debug RDS files are written containing:
 - `plot_population_size_new.R`
 - `DPS_plot.R` when DPS plotting is used
 - `extract_derived_file.pl`
-- `qsub_subroutine.pl` in `~/softwares/` or `~/`
+- `qsub_subroutine.pl` in `~/software/` or `~/`
 
 ## Local Helper Files Used by This Wrapper
 

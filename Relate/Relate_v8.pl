@@ -1,11 +1,16 @@
 #!/usr/bin/perl
 
 use Cwd qw(getcwd);
+use FindBin qw($RealBin);
 use Term::ANSIColor qw(:constants);
 use Fcntl ':flock';
 
 my $home = (getpwuid $>)[7];
-if (-e "$home\/software\/qsub_subroutine.pl"){
+my $script_dir = $RealBin;
+if (-e "$script_dir\/qsub_subroutine.pl"){
+	require "$script_dir\/qsub_subroutine.pl";
+}
+elsif (-e "$home\/software\/qsub_subroutine.pl"){
 	require "$home\/software\/qsub_subroutine.pl";
 }
 elsif (-e "$home\/qsub_subroutine.pl"){
@@ -57,14 +62,16 @@ my $inprefix; my $path; my @vcfs;
 my $mask; my $rm; my $pop; my @chr_names; my $rr = 0; my $pop_check;
 my $mrate = '1e-8'; my $es = 3000; my $hap = 0;
 my $coal; my @popis; my $year = "--years_per_gen 1 "; my $td = "--threshold 0 ";
-my $repeat = 1; my $spl = 0; my @ancs; my $bin = -1;
+my $repeat = 5; my $spl = 0; my @ancs; my $bin = -1;
 my $eps = 1; my $dps = 0; my $clues = 0; my @cbins; my $epsrp = 0;
 my @clues_chr; my @clues_fbp; my @clues_lbp;
-my $ns = "--num_samples 5 "; my $tvs = 0; my $mem = 12; my $threads = 4;
+my $ns = "--num_samples 100 "; my $tvs = 0; my $mem = 12; my $threads = 4;
 my $rc = 1; my $cf = "b"; my $tco; my $dom;
 my $qout; my $replot; my @cps; my $df; my $nat;
 my $npsi = 1;
 my $tvs_debug = 0;
+my $clues_mem;
+my $tvs_mem;
 my $rs_sample_num; my $rs_repeats; my $rseed;
 my $keep_anc = 1;
 for (my $i=0; $i<=$#ARGV; $i++){
@@ -86,6 +93,18 @@ for (my $i=0; $i<=$#ARGV; $i++){
         $mem = $ARGV[$i+1];
         unless ($mem =~ /\d/ && $mem <= 128 && $mem >= 1){
 			die "-mem: only digitals can be accepted. (1-128)\n";
+		}
+	}
+	if ($ARGV[$i] eq "\-clues_mem"){
+        $clues_mem = $ARGV[$i+1];
+        unless ($clues_mem =~ /^\d+$/ && $clues_mem <= 128 && $clues_mem >= 1){
+			die "-clues_mem: only integers can be accepted. (1-128)\n";
+		}
+	}
+	if ($ARGV[$i] eq "\-tvs_mem"){
+        $tvs_mem = $ARGV[$i+1];
+        unless ($tvs_mem =~ /^\d+$/ && $tvs_mem <= 128 && $tvs_mem >= 1){
+			die "-tvs_mem: only integers can be accepted. (1-128)\n";
 		}
 	}
 	if ($ARGV[$i] eq "\-t"){
@@ -500,6 +519,9 @@ if ($pop_check && $rm){
 unless ($gmap){
 	die "-map is not supplied.\n";
 }
+
+$clues_mem = $mem unless defined $clues_mem;
+$tvs_mem = $mem unless defined $tvs_mem;
 
 unless ($pop){
 	die "-pop is not supplied.\n";
@@ -1135,7 +1157,8 @@ if ($clues == 1 || $tvs == 1){
             if ($clues_popis[$l] ne "ALL" || @random_set_pops){
 			    &subset_sample($ran, $conda, $branch_path, $pop_for_clues, $clues_popis[$l], $exc, $ow, \@r_inputs);
             }
-            open (BASH, ">my_bash_relate_CLUES_$popi_d_names[$l]\_$ran\_$z\.sh") || die BOLD "Cannot write my_bash_relate_CLUES_$popi_d_names[$l]\_$ran\_$z\.sh: $!", RESET, "\n";
+            my $branch_job_tag = ($clues == 1 && $tvs == 1) ? "CLUES_TVS" : ($clues == 1 ? "CLUES" : "TVS");
+            open (BASH, ">my_bash_relate_$branch_job_tag\_$popi_d_names[$l]\_$ran\_$z\.sh") || die BOLD "Cannot write my_bash_relate_$branch_job_tag\_$popi_d_names[$l]\_$ran\_$z\.sh: $!", RESET, "\n";
             my @popi_clues_outputs;
             foreach my $i (0..$#clues_chr){
                 my $qout = "";
@@ -1206,8 +1229,8 @@ if ($clues == 1 || $tvs == 1){
                     }
                     $qout .= $tvs_qout;
                     if ($qout =~ /\S/){
-                        print BASH "qsub \.\/qsub_files\/$ran\_$z\_relate_CLUES_$popi_d_names[$l]\_chr$relate_chr\_$clues_fbp[$i]\-$clues_lbp[$i]\.q\n";
-                        &pbs_setting("$exc\-cj_quiet $conda\-cj_qname $z\_relate_CLUES_$popi_d_names[$l]\_chr$relate_chr\_$clues_fbp[$i]\-$clues_lbp[$i] -cj_sn $ran -cj_qout . $qout");
+                        print BASH "qsub \.\/qsub_files\/$ran\_$z\_relate_$branch_job_tag\_$popi_d_names[$l]\_chr$relate_chr\_$clues_fbp[$i]\-$clues_lbp[$i]\.q\n";
+                        &pbs_setting("$exc\-cj_quiet $conda\-cj_qname $z\_relate_$branch_job_tag\_$popi_d_names[$l]\_chr$relate_chr\_$clues_fbp[$i]\-$clues_lbp[$i] -cj_sn $ran -cj_qout . $qout");
                     }
                     my $pf;
                     if ($exc && $clues == 1){
@@ -1248,6 +1271,7 @@ if ($clues == 1 || $tvs == 1){
 	    if ($clues == 1){
 	        my @summary_dirs = sort keys %clues_summary_dirs;
 	        my $summary_idx = 0;
+	        my @pending_broken_stick_jobs;
 	        foreach my $summary_dir (@summary_dirs){
 	            my @inference_files = glob("$summary_dir/*_inference.txt");
 	            if (!@inference_files){
@@ -1264,7 +1288,7 @@ if ($clues == 1 || $tvs == 1){
 	            my $broken_stick_txt = "$summary_dir/broken_stick_results.txt";
 	            my $broken_stick_manifest = "$summary_dir/broken_stick_plots_manifest.txt";
 	            if ($redo_summary || !(-e $aic_lowest && -e $aic_all && -e $aic_summary)){
-	                &pbs_setting("$exc\-cj_quiet $conda\-cj_qname clues_AIC_$summary_idx -cj_sn $ran -cj_qout . Rscript $LocalCluesAIC -p $summary_dir\\n");
+	                &pbs_setting("$exc\-cj_quiet $conda\-cj_mem $clues_mem -cj_qname clues_AIC_$summary_idx -cj_sn $ran -cj_qout . Rscript $LocalCluesAIC -p $summary_dir\\n");
 	            }
 	            else {
 	                warn "Skipping CLUES AIC summary for $summary_dir because summary files already exist. Use -ow or -rp clues/all to regenerate.\n";
@@ -1277,29 +1301,34 @@ if ($clues == 1 || $tvs == 1){
 	                }
 	                else {
 	                    if ($redo_summary || !-e $summary_plot){
-	                        &pbs_setting("$exc\-cj_quiet $conda\-cj_qname clues_plot_$summary_idx -cj_sn $ran -cj_qout . Rscript $LocalCluesSummaryPlot -p $summary_dir\\nRscript $LocalBrokenStick -f $broken_stick_input -n $npsi\\n");
+	                        &pbs_setting("$exc\-cj_quiet $conda\-cj_mem $clues_mem -cj_qname clues_plot_$summary_idx -cj_sn $ran -cj_qout . Rscript $LocalCluesSummaryPlot -p $summary_dir\\n");
 	                    }
 	                    else {
 	                        warn "Skipping CLUES summary plot for $summary_dir because final_all_loci.median.pdf already exists. Use -ow or -rp clues/all to regenerate.\n";
 	                    }
-	                    if (!$redo_summary && -e $summary_plot){
-	                        if (!(-e $broken_stick_rda && -e $broken_stick_txt && -e $broken_stick_manifest)){
-	                            if (-e $broken_stick_input){
-	                                &pbs_setting("$exc\-cj_quiet $conda\-cj_qname clues_bs_$summary_idx -cj_sn $ran -cj_qout . Rscript $LocalBrokenStick -f $broken_stick_input -n $npsi\\n");
-	                            }
-	                            else {
-	                                warn "Skipping CLUES broken-stick summary for $summary_dir because final_all_loci.broken.stick.rda is missing.\n";
-	                            }
-	                        }
-	                        else {
-	                            warn "Skipping CLUES broken-stick summary for $summary_dir because summary files already exist. Use -ow or -rp clues/all to regenerate.\n";
-	                        }
+	                    if ($redo_summary || !(-e $broken_stick_rda && -e $broken_stick_txt && -e $broken_stick_manifest)){
+	                        push(@pending_broken_stick_jobs, [$summary_idx, $summary_dir, $broken_stick_input]);
+	                    }
+	                    else {
+	                        warn "Skipping CLUES broken-stick summary for $summary_dir because summary files already exist. Use -ow or -rp clues/all to regenerate.\n";
 	                    }
 	                }
 	            }
 	            $summary_idx++;
 	        }
 	        if ($exc){
+	            &status($ran);
+	        }
+	        foreach my $job (@pending_broken_stick_jobs){
+	            my ($job_idx, $summary_dir, $broken_stick_input) = @$job;
+	            if (-e $broken_stick_input){
+	                &pbs_setting("$exc\-cj_quiet $conda\-cj_mem $clues_mem -cj_qname clues_bs_$job_idx -cj_sn $ran -cj_qout . Rscript $LocalBrokenStick -f $broken_stick_input -n $npsi\\n");
+	            }
+	            else {
+	                warn "Skipping CLUES broken-stick summary for $summary_dir because final_all_loci.broken.stick.rda is missing after CLUES summary plotting.\n";
+	            }
+	        }
+	        if ($exc && @pending_broken_stick_jobs){
 	            &status($ran);
 	        }
 	    }
@@ -1319,7 +1348,7 @@ if ($clues == 1 || $tvs == 1){
 	            my $need_debug = ($tvs_debug == 1 && !-e $summary_debug_manifest) ? 1 : 0;
 	            my $tvs_debug_flag = $tvs_debug ? " --debug" : "";
 	            if ($redo_summary || !(-e $summary_manifest && -e $summary_bundle) || $need_debug){
-	                &pbs_setting("$exc\-cj_quiet $conda\-cj_qname tvs_summary_$summary_idx -cj_sn $ran -cj_qout . Rscript $LocalTreeViewSummary --summary $summary_dir$tvs_debug_flag\\n");
+	                &pbs_setting("$exc\-cj_quiet $conda\-cj_mem $tvs_mem -cj_qname tvs_summary_$summary_idx -cj_sn $ran -cj_qout . Rscript $LocalTreeViewSummary --summary $summary_dir$tvs_debug_flag\\n");
 	            }
 	            else {
 	                warn "Skipping TreeViewSamples summary for $summary_dir because summary files already exist. Use -ow or -rp tvs/all to regenerate.\n";
@@ -1946,7 +1975,7 @@ sub modify_poplabels {
 	}
 }
 sub usage {
-	print BOLD "Usage: perl Relate_8.pl -vcf VCF_FILE -pop POPULATION_LABEL_FILE -map RECOMB_MAP_FILE -al ANCESTOR_ID_LIST [-am ANC\/MUT_FOLDER_PATH] [-hap] [-nka] [-o OUTPUT_PATH] [-mask MASK_FILE] [-bins LOWER,UPPER,STEPSIZE] [-rm REMOVE_SAMPLE_ID_FILE] [-pre PREFIX] [-rr] [-coal COAL_FILE] [-dps] [-clues] [-tvs] [-bp CHR\:POS-POS] [-ns INT] [-npsi INT] [-tco INT] [-pf FLOAT] [-d FLOAT] [-cp COLOR_PALETTE] [-m VALUE] [-n VALUE] [-spl VALUE] [-popi POP_NAMES] [-year VALUE] [-rp all\|clues\|tvs] [-cb FILE] [-rc INT] [-rs SAMPLE_NUM,REPEATS] [-rseed INT] [-epsrp INT] [-nat] [-tvs_debug] [--force] [-ow] [-sn SERIAL_NUMBER] [-mem MEMORY_IN_GB] [-t THREADS] [-exc] [-h]\n\n", RESET;
+	print BOLD "Usage: perl Relate_8.pl -vcf VCF_FILE -pop POPULATION_LABEL_FILE -map RECOMB_MAP_FILE -al ANCESTOR_ID_LIST [-am ANC\/MUT_FOLDER_PATH] [-hap] [-nka] [-o OUTPUT_PATH] [-mask MASK_FILE] [-bins LOWER,UPPER,STEPSIZE] [-rm REMOVE_SAMPLE_ID_FILE] [-pre PREFIX] [-rr] [-coal COAL_FILE] [-dps] [-clues] [-tvs] [-bp CHR\:POS-POS] [-ns INT] [-npsi INT] [-tco INT] [-pf FLOAT] [-d FLOAT] [-cp COLOR_PALETTE] [-m VALUE] [-n VALUE] [-spl VALUE] [-popi POP_NAMES] [-year VALUE] [-rp all\|clues\|tvs] [-cb FILE] [-rc INT] [-rs SAMPLE_NUM,REPEATS] [-rseed INT] [-epsrp INT] [-nat] [-tvs_debug] [--force] [-ow] [-sn SERIAL_NUMBER] [-mem MEMORY_IN_GB] [-clues_mem MEMORY_IN_GB] [-tvs_mem MEMORY_IN_GB] [-t THREADS] [-exc] [-h]\n\n", RESET;
 	print "If -am is set, -vcf, -map and -al are not required.\n";
 	print "For -popi, multiple populations as an group could be indicated by \[population_1,population_2\]. Multiple independent runs can be indicated by comma as population_1,population2.\nYou can combine these two functions as [population_1,population_2],population_3\n";
 	print "The first run will be population_1\+population_2, and the second run will be population_3.\n";

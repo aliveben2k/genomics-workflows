@@ -14,6 +14,9 @@ poplabels_shapesize <- 10
 poplabels_textsize <- 50
 sample_cap_half_width <- 0.5
 sample_zero_tol <- 1e-8
+focal_branch_colour <- "#c53a2f"
+focal_branch_label_size <- 7
+show_focal_branch_labels <- FALSE
 
 extract_locus_id <- function(file_path) {
   file_name <- basename(file_path)
@@ -33,17 +36,24 @@ get_palette <- function(n) {
 TreeViewFromData <- function(plotcoords, plotcoords_sample, years_per_gen, ...) {
   plotcoords_curr <- plotcoords
   plotcoords_curr[3:4] <- plotcoords_curr[3:4] * years_per_gen
+  plotcoords_tree <- subset(plotcoords_curr, seg_type != "m" & !(abs(y_begin) <= sample_zero_tol & abs(y_end) <= sample_zero_tol))
   plotcoords_sample_curr <- plotcoords_sample
   plotcoords_sample_lower_zero <- subset(plotcoords_sample_curr, agemin <= sample_zero_tol)
   plotcoords_sample_lower_nonzero <- subset(plotcoords_sample_curr, agemin > sample_zero_tol)
+  focal_branches <- subset(plotcoords_tree, is_focal_branch)
+  focal_branch_labels <- subset(focal_branches, !duplicated(branchID))
+  if (nrow(focal_branch_labels) > 0) {
+    focal_branch_labels$label_x <- (focal_branch_labels$x_begin + focal_branch_labels$x_end) / 2
+    focal_branch_labels$label_y <- (focal_branch_labels$y_begin + focal_branch_labels$y_end) / 2
+  }
   p <- ggplot() +
-    geom_segment(data = subset(plotcoords_curr, seg_type != "m"), aes(x = x_begin, xend = x_end, y = y_begin, yend = y_end), colour = "black", alpha = 1, ...) +
+    geom_segment(data = plotcoords_tree, aes(x = x_begin, xend = x_end, y = y_begin, yend = y_end), colour = "black", alpha = 1, ...) +
+    geom_segment(data = focal_branches, aes(x = x_begin, xend = x_end, y = y_begin, yend = y_end), colour = focal_branch_colour, alpha = 1, linewidth = tree_lwd + 0.7) +
     geom_segment(data = plotcoords_sample_lower_nonzero, aes(x = x_begin, xend = x_begin, y = agemin, yend = agemax, group = branchID), linewidth = 2, colour = "#7758a5") +
     geom_segment(data = plotcoords_sample_lower_nonzero, aes(x = x_begin - sample_cap_half_width, xend = x_begin + sample_cap_half_width, y = agemax, yend = agemax, group = branchID), linewidth = 2, colour = "#7758a5") +
     geom_segment(data = plotcoords_sample_lower_nonzero, aes(x = x_begin - sample_cap_half_width, xend = x_begin + sample_cap_half_width, y = agemin, yend = agemin, group = branchID), linewidth = 2, colour = "#7758a5") +
     geom_segment(data = plotcoords_sample_lower_zero, aes(x = x_begin, xend = x_begin, y = agemin, yend = agemax, group = branchID), linewidth = 2, colour = "black") +
-    geom_segment(data = plotcoords_sample_lower_zero, aes(x = x_begin - sample_cap_half_width, xend = x_begin + sample_cap_half_width, y = agemax, yend = agemax, group = branchID), linewidth = 2, colour = "black") +
-    geom_segment(data = plotcoords_sample_lower_zero, aes(x = x_begin - sample_cap_half_width, xend = x_begin + sample_cap_half_width, y = agemin, yend = agemin, group = branchID), linewidth = 2, colour = "black") +
+    #geom_segment(data = plotcoords_sample_lower_zero, aes(x = x_begin - sample_cap_half_width, xend = x_begin + sample_cap_half_width, y = agemax, yend = agemax, group = branchID), linewidth = 2, colour = "black") +
     theme(
       text = element_text(size = 30),
       axis.line.x = element_blank(),
@@ -69,6 +79,9 @@ TreeViewFromData <- function(plotcoords, plotcoords_sample, years_per_gen, ...) 
       plot.margin = margin(t = 0, r = 20, b = 60, l = 30, unit = "pt")
     ) +
     scale_x_continuous(limits = c(0, max(plotcoords_curr$x_begin) + 1), expand = c(0, 0))
+  if (show_focal_branch_labels && nrow(focal_branch_labels) > 0) {
+    p <- p + geom_text(data = focal_branch_labels, aes(x = label_x, y = label_y, label = branchID), colour = focal_branch_colour, size = focal_branch_label_size, vjust = -0.6, fontface = "bold")
+  }
   p
 }
 
@@ -132,8 +145,114 @@ read_sample_names <- function(filename_sample) {
   sample_ids
 }
 
+read_relate_mutation_table <- function(filename_mut) {
+  mut_table <- tryCatch(
+    read.table(filename_mut, header = TRUE, sep = ";", stringsAsFactors = FALSE, fill = TRUE, quote = "", comment.char = ""),
+    error = function(e) NULL
+  )
+  if (is.null(mut_table)) {
+    return(NULL)
+  }
+  keep_cols <- vapply(mut_table, function(col) !all(is.na(col) | col == ""), logical(1))
+  mut_table[, keep_cols, drop = FALSE]
+}
+
+extract_focal_branch_ids <- function(filename_mut, snp) {
+  mut_table <- read_relate_mutation_table(filename_mut)
+  if (is.null(mut_table) || nrow(mut_table) == 0 || !("pos_of_snp" %in% colnames(mut_table)) || !("branch_indices" %in% colnames(mut_table))) {
+    return(integer())
+  }
+  focal_rows <- mut_table[as.numeric(mut_table$pos_of_snp) == as.numeric(snp), , drop = FALSE]
+  if (nrow(focal_rows) == 0) {
+    return(integer())
+  }
+  focal_strings <- focal_rows$branch_indices
+  focal_ids <- unlist(strsplit(trimws(focal_strings), "\\s+"), use.names = FALSE)
+  focal_ids <- focal_ids[nzchar(focal_ids)]
+  sort(unique(as.integer(focal_ids[grepl("^[0-9]+$", focal_ids)])))
+}
+
+build_branch_metadata <- function(plotcoords) {
+  tree_segments <- subset(plotcoords, seg_type != "m")
+  branch_ids <- sort(unique(tree_segments$branchID))
+  meta <- vector("list", length(branch_ids))
+  names(meta) <- as.character(branch_ids)
+  endpoint_map <- list()
+
+  for (branch_id in branch_ids) {
+    branch_segments <- tree_segments[tree_segments$branchID == branch_id, , drop = FALSE]
+    endpoints <- unique(data.frame(
+      x = c(branch_segments$x_begin, branch_segments$x_end),
+      y = c(branch_segments$y_begin, branch_segments$y_end)
+    ))
+    bottom_y <- min(endpoints$y)
+    top_y <- max(endpoints$y)
+    endpoint_keys <- paste(endpoints$x, endpoints$y, sep = "::")
+    bottom_keys <- endpoint_keys[endpoints$y == bottom_y]
+    top_keys <- endpoint_keys[endpoints$y == top_y]
+    meta[[as.character(branch_id)]] <- list(
+      branch_id = branch_id,
+      bottom_y = bottom_y,
+      top_y = top_y,
+      bottom_keys = bottom_keys,
+      top_keys = top_keys
+    )
+    for (key in endpoint_keys) {
+      endpoint_map[[key]] <- unique(c(endpoint_map[[key]], branch_id))
+    }
+  }
+
+  list(meta = meta, endpoint_map = endpoint_map)
+}
+
+expand_focal_branch_clade <- function(focal_branch_ids, plotcoords, tol = 1e-8) {
+  if (length(focal_branch_ids) == 0) {
+    return(integer())
+  }
+  branch_graph <- build_branch_metadata(plotcoords)
+  branch_meta <- branch_graph$meta
+  endpoint_map <- branch_graph$endpoint_map
+  known_branch_ids <- as.integer(names(branch_meta))
+  descendants <- intersect(as.integer(focal_branch_ids), known_branch_ids)
+  queue <- descendants
+
+  while (length(queue) > 0) {
+    current_id <- queue[1]
+    queue <- queue[-1]
+    current_meta <- branch_meta[[as.character(current_id)]]
+    if (is.null(current_meta)) {
+      next
+    }
+    neighbor_ids <- unique(unlist(endpoint_map[current_meta$bottom_keys], use.names = FALSE))
+    if (length(neighbor_ids) == 0) {
+      next
+    }
+    child_ids <- neighbor_ids[vapply(neighbor_ids, function(neighbor_id) {
+      if (neighbor_id %in% descendants || neighbor_id == current_id) {
+        return(FALSE)
+      }
+      neighbor_meta <- branch_meta[[as.character(neighbor_id)]]
+      if (is.null(neighbor_meta)) {
+        return(FALSE)
+      }
+      shares_child_node <- any(neighbor_meta$top_keys %in% current_meta$bottom_keys)
+      extends_downward <- neighbor_meta$bottom_y < (current_meta$bottom_y - tol)
+      shares_child_node && extends_downward
+    }, logical(1))]
+    if (length(child_ids) > 0) {
+      descendants <- sort(unique(c(descendants, child_ids)))
+      queue <- c(queue, child_ids)
+    }
+  }
+
+  descendants
+}
+
 build_treeview_data <- function(filename_plot, filename_poplabels, filename_sample, filename_mut, years_per_gen, snp) {
   plotcoords <- read.table(paste0(filename_plot, ".plotcoords"), header = TRUE)
+  focal_branch_ids <- extract_focal_branch_ids(filename_mut, snp)
+  highlight_branch_ids <- expand_focal_branch_clade(focal_branch_ids, plotcoords)
+  plotcoords$is_focal_branch <- plotcoords$branchID %in% highlight_branch_ids
   plotcoords_sample <- read.table(paste0(filename_plot, "_sample.plotcoords"), header = TRUE)
   plotcoords_sample[, 2] <- plotcoords_sample[, 2] * years_per_gen
   plotcoords_sample <- merge(plotcoords_sample, subset(plotcoords, seg_type %in% c("t", "v")), by = "branchID")
@@ -192,7 +311,9 @@ build_treeview_data <- function(filename_plot, filename_poplabels, filename_samp
     muts = muts,
     tips = tips,
     years_per_gen = years_per_gen,
-    snp = snp
+    snp = snp,
+    focal_branch_ids = focal_branch_ids,
+    highlight_branch_ids = highlight_branch_ids
   )
 }
 

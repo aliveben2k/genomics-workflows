@@ -322,6 +322,92 @@ write_treeview_outputs <- function(treeview_data, filename_plot) {
   write.table(treeview_data$plotcoords_sample_summary, file = paste0(filename_plot, ".treeview_sample_summary.tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
 }
 
+treeview_structure_signature <- function(treeview_data) {
+  tree_segments <- treeview_data$plotcoords[, c("branchID", "seg_type", "x_begin", "x_end"), drop = FALSE]
+  tree_segments <- tree_segments[order(tree_segments$branchID, tree_segments$seg_type, tree_segments$x_begin, tree_segments$x_end), ]
+  rownames(tree_segments) <- NULL
+
+  tips <- treeview_data$tips[, c("branchID", "sample_name", "x_begin"), drop = FALSE]
+  tips <- tips[order(tips$x_begin, tips$branchID), ]
+  rownames(tips) <- NULL
+
+  sample_summary_index <- treeview_data$plotcoords_sample_summary[, c("branchID", "x_begin"), drop = FALSE]
+  sample_summary_index <- sample_summary_index[order(sample_summary_index$x_begin, sample_summary_index$branchID), ]
+  rownames(sample_summary_index) <- NULL
+
+  list(
+    tree_segments = tree_segments,
+    tips = tips,
+    sample_summary_index = sample_summary_index
+  )
+}
+
+structure_signature_key <- function(signature) {
+  paste(
+    paste(apply(signature$tree_segments, 1, paste, collapse = ":"), collapse = "|"),
+    paste(apply(signature$tips, 1, paste, collapse = ":"), collapse = "|"),
+    paste(apply(signature$sample_summary_index, 1, paste, collapse = ":"), collapse = "|"),
+    sep = "##"
+  )
+}
+
+treeview_age_dispersion <- function(treeview_data) {
+  sample_raw <- treeview_data$plotcoords_sample_raw
+  if (is.null(sample_raw) || nrow(sample_raw) == 0 || !("age" %in% colnames(sample_raw))) {
+    return(Inf)
+  }
+  branch_keys <- interaction(sample_raw$branchID, sample_raw$x_begin, drop = TRUE, lex.order = TRUE)
+  branch_vars <- tapply(sample_raw$age, branch_keys, function(x) {
+    if (length(x) <= 1) {
+      return(0)
+    }
+    stats::var(x, na.rm = TRUE)
+  })
+  branch_vars <- as.numeric(branch_vars)
+  branch_vars <- branch_vars[is.finite(branch_vars)]
+  if (length(branch_vars) == 0) {
+    return(Inf)
+  }
+  mean(branch_vars)
+}
+
+select_treeview_consensus_runs <- function(run_data, locus, locus_files) {
+  signatures <- lapply(run_data, treeview_structure_signature)
+  keys <- vapply(signatures, structure_signature_key, character(1))
+  key_table <- sort(table(keys), decreasing = TRUE)
+  top_count <- as.integer(key_table[1])
+  top_keys <- names(key_table)[as.integer(key_table) == top_count]
+  if (length(top_keys) == 1) {
+    consensus_key <- top_keys[1]
+  } else {
+    key_scores <- vapply(top_keys, function(key) {
+      key_idx <- which(keys == key)
+      mean(vapply(key_idx, function(i) treeview_age_dispersion(run_data[[i]]), numeric(1)))
+    }, numeric(1))
+    min_score <- min(key_scores, na.rm = TRUE)
+    score_ties <- top_keys[which(key_scores == min_score)]
+    consensus_key <- sort(score_ties)[1]
+  }
+  keep_idx <- which(keys == consensus_key)
+  dropped_idx <- setdiff(seq_along(run_data), keep_idx)
+  reference_idx <- keep_idx[1]
+  summary_note <- data.frame(
+    locus = locus,
+    total_repeats = length(run_data),
+    kept_repeats = length(keep_idx),
+    dropped_repeats = length(dropped_idx),
+    reference_repeat = reference_idx,
+    reference_file = basename(locus_files[reference_idx]),
+    dropped_files = if (length(dropped_idx) > 0) paste(basename(locus_files[dropped_idx]), collapse = ",") else "",
+    stringsAsFactors = FALSE
+  )
+  list(
+    keep_idx = keep_idx,
+    reference_idx = reference_idx,
+    summary_note = summary_note
+  )
+}
+
 plot_treeview_summary <- function(summary_data, output_prefix) {
   p1 <- TreeViewFromData(summary_data$plotcoords, summary_data$plotcoords_sample_summary, summary_data$years_per_gen, lwd = tree_lwd) +
     AddMutationsFromData(summary_data$muts, size = mut_size)
@@ -360,12 +446,24 @@ summarize_treeview_dir <- function(summary_dir) {
     output_prefix = character(),
     stringsAsFactors = FALSE
   )
+  consistency_manifest <- data.frame(
+    locus = character(),
+    total_repeats = integer(),
+    kept_repeats = integer(),
+    dropped_repeats = integer(),
+    reference_repeat = integer(),
+    reference_file = character(),
+    dropped_files = character(),
+    stringsAsFactors = FALSE
+  )
 
   for (locus in loci) {
     locus_files <- files[vapply(files, extract_locus_id, character(1)) == locus]
     run_data <- lapply(locus_files, readRDS)
-    base_data <- run_data[[1]]
-    sample_raw <- bind_rows(lapply(seq_along(run_data), function(i) {
+    consensus <- select_treeview_consensus_runs(run_data, locus, locus_files)
+    keep_idx <- consensus$keep_idx
+    base_data <- run_data[[consensus$reference_idx]]
+    sample_raw <- bind_rows(lapply(keep_idx, function(i) {
       dat <- run_data[[i]]$plotcoords_sample_raw
       dat$repeat_run <- i
       dat
@@ -378,6 +476,8 @@ summarize_treeview_dir <- function(summary_dir) {
         agemax = quantile(age, probs = 0.975),
         .groups = "drop"
       )
+    sample_summary$marker <- ifelse(sample_summary$branchID %in% base_data$highlight_branch_ids, "*", "")
+    sample_summary <- sample_summary[, c("marker", setdiff(colnames(sample_summary), "marker"))]
     summary_data <- list(
       plotcoords = base_data$plotcoords,
       plotcoords_sample_summary = sample_summary,
@@ -393,7 +493,7 @@ summarize_treeview_dir <- function(summary_dir) {
     write.table(sample_summary, file = paste0(output_prefix, ".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
     if (isTRUE(getOption("treeview.debug", FALSE))) {
       debug_file <- paste0(output_prefix, ".debug.rds")
-      saveRDS(list(summary_data = summary_data, output_prefix = output_prefix), debug_file)
+      saveRDS(list(summary_data = summary_data, output_prefix = output_prefix, kept_repeats = keep_idx), debug_file)
       debug_manifest <- rbind(debug_manifest, data.frame(
         locus = locus,
         debug_rds = debug_file,
@@ -401,6 +501,7 @@ summarize_treeview_dir <- function(summary_dir) {
         stringsAsFactors = FALSE
       ))
     }
+    consistency_manifest <- rbind(consistency_manifest, consensus$summary_note)
     plot_treeview_summary(summary_data, output_prefix)
     all_summary[[locus]] <- summary_data
     manifest <- rbind(manifest, data.frame(
@@ -414,6 +515,7 @@ summarize_treeview_dir <- function(summary_dir) {
 
   saveRDS(all_summary, file.path(summary_dir, "TreeViewSamples_summary_all.rds"))
   write.table(manifest, file = file.path(summary_dir, "TreeViewSamples_summary_manifest.txt"), quote = FALSE, row.names = FALSE, sep = "\t")
+  write.table(consistency_manifest, file = file.path(summary_dir, "TreeViewSamples_summary_topology_manifest.txt"), quote = FALSE, row.names = FALSE, sep = "\t")
   if (isTRUE(getOption("treeview.debug", FALSE))) {
     write.table(debug_manifest, file = file.path(summary_dir, "TreeViewSamples_summary_debug_manifest.txt"), quote = FALSE, row.names = FALSE, sep = "\t")
   }

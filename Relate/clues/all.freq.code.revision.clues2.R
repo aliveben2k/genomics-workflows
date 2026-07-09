@@ -24,25 +24,6 @@ extract_locus <- function(file_path) {
   sub("(_freqs|_post|_inference)\\.txt$", "", locus)
 }
 
-posterior_interval <- function(freqs, post_column, lower_prob = 0.025, upper_prob = 0.975) {
-  probs <- as.numeric(post_column)
-  probs[is.na(probs)] <- 0
-  total_prob <- sum(probs)
-  if (total_prob <= 0) {
-    return(c(mode = NA_real_, lower = NA_real_, upper = NA_real_))
-  }
-  probs <- probs / total_prob
-  cdf <- cumsum(probs)
-  mode_idx <- which.max(probs)
-  lower_idx <- which(cdf >= lower_prob)[1]
-  upper_idx <- which(cdf >= upper_prob)[1]
-  c(
-    mode = freqs[mode_idx],
-    lower = freqs[lower_idx],
-    upper = freqs[upper_idx]
-  )
-}
-
 get_palette <- function(n, palette_name) {
   if (n <= 0) {
     return(character())
@@ -59,6 +40,42 @@ get_palette <- function(n, palette_name) {
     return(brewer.pal(max(3, n), "Dark2")[seq_len(n)])
   }
   colorRampPalette(brewer.pal(8, "Dark2"))(n)
+}
+
+normalize_post_columns <- function(post) {
+  col_sums <- colSums(post, na.rm = TRUE)
+  bad_cols <- !is.finite(col_sums) | col_sums <= 0
+  col_sums[bad_cols] <- 1
+  post_norm <- sweep(post, 2, col_sums, "/")
+  if (any(bad_cols)) {
+    post_norm[, bad_cols] <- 0
+  }
+  post_norm
+}
+
+weighted_quantile <- function(x, w, probs) {
+  keep <- is.finite(x) & is.finite(w) & w > 0
+  x <- x[keep]
+  w <- w[keep]
+  if (length(x) == 0) {
+    return(rep(NA_real_, length(probs)))
+  }
+  ord <- order(x)
+  x <- x[ord]
+  w <- w[ord]
+  cum_w <- cumsum(w) / sum(w)
+  vapply(probs, function(p) {
+    x[which(cum_w >= p)[1]]
+  }, numeric(1))
+}
+
+build_time_breaks <- function(max_time, n = 5) {
+  if (!is.finite(max_time) || max_time <= 0) {
+    return(0)
+  }
+  pretty_breaks <- pretty(c(0, max_time), n = n)
+  pretty_breaks <- pretty_breaks[pretty_breaks >= 0 & pretty_breaks <= max_time]
+  unique(c(0, pretty_breaks, max_time))
 }
 
 freq_files <- list.files(path, pattern = "_freqs\\.txt$", full.names = TRUE)
@@ -84,7 +101,7 @@ plot.data <- data.frame(
 
 for (locus in locus_names) {
   locus_prefixes <- prefixes[vapply(prefixes, extract_locus, character(1)) == locus]
-  repeat_modes <- list()
+  repeat_expectations <- list()
   post_sum <- NULL
   freq_sum <- NULL
   time_ref <- NULL
@@ -99,6 +116,7 @@ for (locus in locus_names) {
       warning("Skipping inconsistent CLUES files for prefix: ", prefix)
       next
     }
+    post <- normalize_post_columns(post)
     time_curr <- seq(0, ncol(post) - 1)
     if (is.null(post_sum)) {
       post_sum <- post
@@ -112,27 +130,28 @@ for (locus in locus_names) {
       post_sum <- post_sum + post
       freq_sum <- freq_sum + freqs
     }
-    repeat_modes[[length(repeat_modes) + 1]] <- freqs[apply(post, 2, which.max)]
+    repeat_expectations[[length(repeat_expectations) + 1]] <- colSums(post * freqs)
   }
 
-  if (length(repeat_modes) == 0) {
+  if (length(repeat_expectations) == 0) {
     next
   }
 
-  repeat_matrix <- do.call(rbind, repeat_modes)
-  freq_mean <- freq_sum / length(repeat_modes)
-  post_mean <- post_sum / length(repeat_modes)
+  repeat_matrix <- do.call(rbind, repeat_expectations)
+  freq_mean <- freq_sum / length(repeat_expectations)
+  post_mean <- post_sum / length(repeat_expectations)
   save(post_mean, freq_mean, time_ref, color.series, file = paste0(path, "/For_plot_", locus, ".rda"))
   plot.files <- c(plot.files, paste0(path, "/For_plot_", locus, ".rda"))
 
   posterior_summary <- t(vapply(seq_len(ncol(post_mean)), function(idx) {
-    posterior_interval(freq_mean, post_mean[, idx])
+    probs <- weighted_quantile(freq_mean, post_mean[, idx], c(0.025, 0.5, 0.975))
+    c(lower = probs[1], median = probs[2], upper = probs[3])
   }, numeric(3)))
 
   locus_summary <- data.frame(
     label = locus,
     Time = time_ref,
-    Frequency = posterior_summary[, "mode"],
+    Frequency = posterior_summary[, "median"],
     freq.upper = posterior_summary[, "upper"],
     freq.lower = posterior_summary[, "lower"],
     stringsAsFactors = FALSE
@@ -160,24 +179,30 @@ plot.data$label <- factor(plot.data$label, levels = unique(plot.data$label))
 locus_colors <- get_palette(length(unique(plot.data$label)), color.series)
 names(locus_colors) <- levels(plot.data$label)
 max_time <- max(plot.data$Time, na.rm = TRUE)
-time_breaks <- pretty(c(0, max_time))
+time_breaks <- build_time_breaks(max_time, n = 5)
 
 comp <- ggplot(plot.data, aes(x = Time, color = label, fill = label)) +
   geom_ribbon(aes(ymin = freq.lower, ymax = freq.upper), alpha = 0.2, color = NA) +
   geom_line(aes(y = Frequency), linewidth = 0.6) +
   scale_color_manual(values = locus_colors) +
   scale_fill_manual(values = locus_colors) +
-  scale_x_continuous(expand = c(0, 0), limits = c(0, max_time), breaks = time_breaks) +
+  scale_x_continuous(
+    expand = c(0, 0),
+    limits = c(0, max_time),
+    breaks = time_breaks,
+    labels = function(x) format(x, big.mark = ",", scientific = FALSE, trim = TRUE)
+  ) +
   scale_y_continuous(expand = c(0, 0), limits = c(0, 1)) +
   theme_minimal() +
   theme(
-    aspect.ratio = 1,
     axis.ticks = element_line(color = "black", linewidth = 0.2),
     text = element_text(size = 7.5),
     legend.title = element_blank(),
     legend.text = element_text(size = 7.5),
+    legend.position = "top",
     legend.spacing.y = unit(-0.2, "cm"),
-    axis.text = element_text(color = "black", size = 7.5),
+    axis.text.x = element_text(color = "black", size = 6.5, angle = 45, hjust = 1, vjust = 1),
+    axis.text.y = element_text(color = "black", size = 7.5),
     axis.title.x = element_text(color = "black", size = 7.5),
     axis.title.y = element_text(color = "black", size = 7.5),
     legend.key.size = unit(0.3, "cm"),
@@ -187,4 +212,4 @@ comp <- ggplot(plot.data, aes(x = Time, color = label, fill = label)) +
   labs(x = "Time", y = "Frequency")
 
 pdf_out <- paste0(path, "/final_all_loci.median.pdf")
-ggsave(filename = pdf_out, plot = comp, width = 8, height = 4, units = "cm")
+ggsave(filename = pdf_out, plot = comp, width = 11, height = 6, units = "cm")

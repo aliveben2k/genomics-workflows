@@ -476,7 +476,7 @@ summarize_treeview_dir <- function(summary_dir) {
         agemax = quantile(age, probs = 0.975),
         .groups = "drop"
       )
-    sample_summary$marker <- ifelse(sample_summary$branchID %in% base_data$highlight_branch_ids, "*", "")
+    sample_summary$marker <- ifelse(sample_summary$branchID %in% base_data$focal_branch_ids, "*", "")
     sample_summary <- sample_summary[, c("marker", setdiff(colnames(sample_summary), "marker"))]
     summary_data <- list(
       plotcoords = base_data$plotcoords,
@@ -485,7 +485,9 @@ summarize_treeview_dir <- function(summary_dir) {
       muts = base_data$muts,
       tips = base_data$tips,
       years_per_gen = base_data$years_per_gen,
-      snp = base_data$snp
+      snp = base_data$snp,
+      focal_branch_ids = base_data$focal_branch_ids,
+      highlight_branch_ids = base_data$highlight_branch_ids
     )
     safe_locus <- gsub("[^A-Za-z0-9._-]", "_", locus)
     output_prefix <- file.path(summary_dir, paste0(safe_locus, ".treeview_summary"))

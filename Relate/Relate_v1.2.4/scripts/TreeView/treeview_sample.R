@@ -12,9 +12,9 @@ tree_lwd <- 3
 mut_size <- 8
 poplabels_shapesize <- 10
 poplabels_textsize <- 50
-sample_cap_half_width <- 0.5
+sample_cap_half_width <- 0.25
 sample_zero_tol <- 1e-8
-focal_branch_colour <- "#c53a2f"
+focal_branch_colour <- "#f7931e"
 focal_branch_label_size <- 7
 show_focal_branch_labels <- FALSE
 
@@ -49,9 +49,9 @@ TreeViewFromData <- function(plotcoords, plotcoords_sample, years_per_gen, ...) 
   p <- ggplot() +
     geom_segment(data = plotcoords_tree, aes(x = x_begin, xend = x_end, y = y_begin, yend = y_end), colour = "black", alpha = 1, ...) +
     geom_segment(data = focal_branches, aes(x = x_begin, xend = x_end, y = y_begin, yend = y_end), colour = focal_branch_colour, alpha = 1, linewidth = tree_lwd + 0.7) +
-    geom_segment(data = plotcoords_sample_lower_nonzero, aes(x = x_begin, xend = x_begin, y = agemin, yend = agemax, group = branchID), linewidth = 2, colour = "#7758a5") +
-    geom_segment(data = plotcoords_sample_lower_nonzero, aes(x = x_begin - sample_cap_half_width, xend = x_begin + sample_cap_half_width, y = agemax, yend = agemax, group = branchID), linewidth = 2, colour = "#7758a5") +
-    geom_segment(data = plotcoords_sample_lower_nonzero, aes(x = x_begin - sample_cap_half_width, xend = x_begin + sample_cap_half_width, y = agemin, yend = agemin, group = branchID), linewidth = 2, colour = "#7758a5") +
+    geom_segment(data = plotcoords_sample_lower_nonzero, aes(x = x_begin, xend = x_begin, y = agemin, yend = agemax, group = branchID), linewidth = 2, colour = "black") +
+    geom_segment(data = plotcoords_sample_lower_nonzero, aes(x = x_begin - sample_cap_half_width, xend = x_begin + sample_cap_half_width, y = agemax, yend = agemax, group = branchID), linewidth = 2, colour = "black") +
+    geom_segment(data = plotcoords_sample_lower_nonzero, aes(x = x_begin - sample_cap_half_width, xend = x_begin + sample_cap_half_width, y = agemin, yend = agemin, group = branchID), linewidth = 2, colour = "black") +
     geom_segment(data = plotcoords_sample_lower_zero, aes(x = x_begin, xend = x_begin, y = agemin, yend = agemax, group = branchID), linewidth = 2, colour = "black") +
     #geom_segment(data = plotcoords_sample_lower_zero, aes(x = x_begin - sample_cap_half_width, xend = x_begin + sample_cap_half_width, y = agemax, yend = agemax, group = branchID), linewidth = 2, colour = "black") +
     theme(

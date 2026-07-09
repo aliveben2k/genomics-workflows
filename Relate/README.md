@@ -215,6 +215,8 @@ perl Relate_v8.pl \
 - `-rp all`
 - `-ow`
 - `-npsi INT`: number of breakpoints for broken-stick analysis, default `1`
+- `-clues_mem MEMORY_IN_GB`: memory for CLUES2 summary jobs, including AIC, summarized trajectory plotting, and broken-stick analysis; default inherits `-mem`
+- `-tvs_mem MEMORY_IN_GB`: memory for TreeViewSamples summary jobs; default inherits `-mem`
 
 ### Population size
 
@@ -258,6 +260,13 @@ The pipeline automatically summarizes repeat outputs and writes merged TreeViewS
 If `-tvs_debug` is used, extra debug RDS files are written containing:
 
 - `summary_data`
+
+## Memory Notes
+
+- `-mem` controls the general memory request for submitted jobs.
+- `-clues_mem` can be used when CLUES2 summary jobs need more memory than the main pipeline jobs.
+- `-tvs_mem` can be used when TreeViewSamples summary jobs need more memory than the main pipeline jobs.
+- If `-clues_mem` or `-tvs_mem` are not set, they default to the same value as `-mem`.
 - `output_prefix`
 
 ## Required Pipeline Files

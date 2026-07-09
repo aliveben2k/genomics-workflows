@@ -1274,10 +1274,6 @@ if ($clues == 1 || $tvs == 1){
 	        my @pending_broken_stick_jobs;
 	        foreach my $summary_dir (@summary_dirs){
 	            my @inference_files = glob("$summary_dir/*_inference.txt");
-	            if (!@inference_files){
-	                warn "Skipping CLUES summary for $summary_dir because no *_inference.txt files were found.\n";
-	                next;
-	            }
 	            my $redo_summary = ($ow == 1 || ($replot && $replot =~ /clues|all/i)) ? 1 : 0;
 	            my $aic_lowest = "$summary_dir/AIC_lowest.txt";
 	            my $aic_all = "$summary_dir/AIC_all_runs.txt";
@@ -1287,7 +1283,10 @@ if ($clues == 1 || $tvs == 1){
 	            my $broken_stick_rda = "$summary_dir/broken_stick_results.rda";
 	            my $broken_stick_txt = "$summary_dir/broken_stick_results.txt";
 	            my $broken_stick_manifest = "$summary_dir/broken_stick_plots_manifest.txt";
-	            if ($redo_summary || !(-e $aic_lowest && -e $aic_all && -e $aic_summary)){
+	            if (!@inference_files){
+	                warn "Skipping CLUES AIC summary for $summary_dir because no *_inference.txt files were found.\n";
+	            }
+	            elsif ($redo_summary || !(-e $aic_lowest && -e $aic_all && -e $aic_summary)){
 	                &pbs_setting("$exc\-cj_quiet $conda\-cj_mem $clues_mem -cj_qname clues_AIC_$summary_idx -cj_sn $ran -cj_qout . Rscript $LocalCluesAIC -p $summary_dir\\n");
 	            }
 	            else {

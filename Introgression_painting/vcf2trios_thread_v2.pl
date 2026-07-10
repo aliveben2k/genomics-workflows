@@ -12,8 +12,8 @@ $SIG{INT} = sub { cleanup_tmp_chunks(); die "Interrupted.\n"; };
 $SIG{TERM} = sub { cleanup_tmp_chunks(); die "Terminated.\n"; };
 END { cleanup_tmp_chunks(); }
 my $home = (getpwuid $>)[7];
-if (-e "$home\/softwares\/qsub_subroutine.pl"){
-	require "$home\/softwares\/qsub_subroutine.pl";
+if (-e "$home\/software\/qsub_subroutine.pl"){
+	require "$home\/software\/qsub_subroutine.pl";
 }
 elsif (-e "$home\/qsub_subroutine.pl"){
 	require "$home\/qsub_subroutine.pl";

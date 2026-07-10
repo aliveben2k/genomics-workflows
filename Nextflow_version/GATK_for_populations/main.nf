@@ -27,52 +27,11 @@ def runSerialFromSession(session_id) {
     "${first}${encoded.take(3)}"
 }
 
-/*
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    GENOME PARAMETER VALUES
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-*/
-
-// TODO nf-core: Remove this line if you don't need a FASTA file
-//   This is an example of how to use getGenomeAttribute() to fetch parameters
-//   from igenomes.config using `--genome`
-params.fasta = params.fasta ?: getGenomeAttribute('fasta')
-params.start_stage = params.start_stage as Integer
-params.stop_stage = params.stop_stage == null ? 6 : params.stop_stage as Integer
-params.gather_vcfs = params.gather_vcfs == null ? null : params.gather_vcfs as Integer
-params.filter_vcf = params.filter_vcf ?: 'biallele'
-params.sequencing_type = (params.sequencing_type ?: 'wgs').toString().toLowerCase()
-def sequencing_type_aliases = ['wgs', 'wes', 'rad', 'amp'].findAll { type -> params[type] }
-if (sequencing_type_aliases.size() > 1) {
-    error "Use only one sequencing-type flag: ${sequencing_type_aliases.collect { '--' + it }.join(', ')}"
-}
-if (!['wgs', 'wes', 'rad', 'amp'].contains(params.sequencing_type)) {
-    error "--sequencing_type must be 'wgs', 'wes', 'rad', or 'amp'."
-}
-if (!sequencing_type_aliases.isEmpty()) {
-    def alias_type = sequencing_type_aliases[0]
-    if (params.sequencing_type != 'wgs' && params.sequencing_type != alias_type) {
-        error "--${alias_type} conflicts with --sequencing_type ${params.sequencing_type}."
+def asBooleanParam(value) {
+    if (value instanceof Boolean) {
+        return value
     }
-    params.sequencing_type = alias_type
-}
-if (!['biallele', 'monobi'].contains(params.filter_vcf)) {
-    error "--filter_vcf must be 'biallele' or 'monobi'."
-}
-if (params.filter_vcf == 'monobi' && params.bcftools_view_args == null && !params.all_sites && params.start_stage <= 5) {
-    log.warn '--filter_vcf monobi cannot retain monomorphic sites unless joint genotyping uses --all_sites.'
-}
-if (params.gather_vcfs != null && ![5, 6].contains(params.gather_vcfs)) {
-    error '--gather_vcfs must be 5 or 6.'
-}
-if (params.gather_vcfs != null && params.stop_stage < params.gather_vcfs) {
-    error "--gather_vcfs ${params.gather_vcfs} requires --stop_stage ${params.gather_vcfs} or later."
-}
-if (params.gather_vcfs == 5 && params.start_stage > 5) {
-    error '--gather_vcfs 5 requires --start_stage 5 or earlier. To filter an existing all.raw.vcf.gz, provide it as the stage-6 input and omit --gather_vcfs 5.'
-}
-if (!params.run_serial) {
-    params.run_serial = runSerialFromSession(workflow.sessionId)
+    return value?.toString()?.toBoolean()
 }
 
 /*
@@ -88,6 +47,11 @@ workflow NFCORE_GATKPOPULATION {
 
     take:
     stage_input // channel: stage-specific records read from --input
+    start_stage
+    stop_stage
+    fasta
+    gather_vcfs
+    sequencing_type
 
     main:
 
@@ -96,21 +60,21 @@ workflow NFCORE_GATKPOPULATION {
     //
     GATKPOPULATION (
         stage_input,
-        params.start_stage,
-        params.stop_stage,
+        start_stage,
+        stop_stage,
         params.trimmer,
         params.adapter_fasta,
-        params.fasta,
+        fasta,
         params.fasta_fai,
         params.fasta_dict,
         params.bwa_index,
         params.known_sites,
         params.intervals,
-        params.gpu_fallback,
-        params.sequencing_type,
+        asBooleanParam(params.gpu_fallback),
+        sequencing_type,
         params.all_sites,
         params.subset_samples,
-        params.gather_vcfs,
+        gather_vcfs,
         params.multiqc_config,
         params.multiqc_logo,
         params.multiqc_methods_description,
@@ -140,10 +104,51 @@ workflow NFCORE_GATKPOPULATION {
 workflow {
 
     main:
-    log.info "Pipeline output serial: ${params.run_serial}"
-    log.info "Pipeline stage range: ${params.start_stage}-${params.stop_stage}"
-    log.info "Sequencing type: ${params.sequencing_type}; " +
-        "duplicate marking: ${['wgs', 'wes'].contains(params.sequencing_type) ? 'enabled' : 'disabled'}"
+    // TODO nf-core: Remove this line if you don't need a FASTA file
+    //   This is an example of how to use getGenomeAttribute() to fetch parameters
+    //   from igenomes.config using `--genome`
+    def fasta = params.fasta ?: getGenomeAttribute('fasta')
+    def start_stage = params.start_stage as Integer
+    def stop_stage = params.stop_stage == null ? 6 : params.stop_stage as Integer
+    def gather_vcfs = params.gather_vcfs == null ? null : params.gather_vcfs as Integer
+    def filter_vcf = params.filter_vcf ?: 'biallele'
+    def sequencing_type = (params.sequencing_type ?: 'wgs').toString().toLowerCase()
+
+    def sequencing_type_aliases = ['wgs', 'wes', 'rad', 'amp'].findAll { type -> asBooleanParam(params[type]) }
+    if (sequencing_type_aliases.size() > 1) {
+        error "Use only one sequencing-type flag: ${sequencing_type_aliases.collect { '--' + it }.join(', ')}"
+    }
+    if (!['wgs', 'wes', 'rad', 'amp'].contains(sequencing_type)) {
+        error "--sequencing_type must be 'wgs', 'wes', 'rad', or 'amp'."
+    }
+    if (!sequencing_type_aliases.isEmpty()) {
+        def alias_type = sequencing_type_aliases[0]
+        if (sequencing_type != 'wgs' && sequencing_type != alias_type) {
+            error "--${alias_type} conflicts with --sequencing_type ${sequencing_type}."
+        }
+        sequencing_type = alias_type
+    }
+    if (!['biallele', 'monobi'].contains(filter_vcf)) {
+        error "--filter_vcf must be 'biallele' or 'monobi'."
+    }
+    if (filter_vcf == 'monobi' && params.bcftools_view_args == null && !params.all_sites && start_stage <= 5) {
+        log.warn '--filter_vcf monobi cannot retain monomorphic sites unless joint genotyping uses --all_sites.'
+    }
+    if (gather_vcfs != null && ![5, 6].contains(gather_vcfs)) {
+        error '--gather_vcfs must be 5 or 6.'
+    }
+    if (gather_vcfs != null && stop_stage < gather_vcfs) {
+        error "--gather_vcfs ${gather_vcfs} requires --stop_stage ${gather_vcfs} or later."
+    }
+    if (gather_vcfs == 5 && start_stage > 5) {
+        error '--gather_vcfs 5 requires --start_stage 5 or earlier. To filter an existing all.raw.vcf.gz, provide it as the stage-6 input and omit --gather_vcfs 5.'
+    }
+    def run_serial = params.run_serial ?: runSerialFromSession(workflow.sessionId)
+
+    log.info "Pipeline output serial: ${run_serial}"
+    log.info "Pipeline stage range: ${start_stage}-${stop_stage}"
+    log.info "Sequencing type: ${sequencing_type}; " +
+        "duplicate marking: ${['wgs', 'wes'].contains(sequencing_type) ? 'enabled' : 'disabled'}"
 
     //
     // SUBWORKFLOW: Run initialisation tasks
@@ -158,15 +163,20 @@ workflow {
         params.help,
         params.help_full,
         params.show_hidden,
-        params.start_stage,
-        params.stop_stage
+        start_stage,
+        stop_stage
     )
 
     //
     // WORKFLOW: Run main workflow
     //
     NFCORE_GATKPOPULATION (
-        PIPELINE_INITIALISATION.out.stage_input
+        PIPELINE_INITIALISATION.out.stage_input,
+        start_stage,
+        stop_stage,
+        fasta,
+        gather_vcfs,
+        sequencing_type
     )
     //
     // SUBWORKFLOW: Run completion tasks

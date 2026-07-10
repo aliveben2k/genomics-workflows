@@ -290,9 +290,8 @@ workflow GATKPOPULATION {
                     ch_cpu_fallback_reads,
                     ch_bwa_index,
                     ch_fasta,
-                    fasta_file,
-                    fai_file,
-                    dict_file,
+                    ch_reference_fai,
+                    ch_reference_dict,
                     known_site_files,
                     known_site_tbi_files,
                     interval_file,
@@ -325,9 +324,8 @@ workflow GATKPOPULATION {
                 ch_trimmed_reads,
                 ch_bwa_index,
                 ch_fasta,
-                fasta_file,
-                fai_file,
-                dict_file,
+                ch_reference_fai,
+                ch_reference_dict,
                 known_site_files,
                 known_site_tbi_files,
                 interval_file,
@@ -414,16 +412,16 @@ workflow GATKPOPULATION {
     if (start_stage <= 4 && stop_stage >= 4) {
         def ch_cohort_gvcfs = ch_sample_gvcf
             .join(ch_sample_gvcf_tbi)
-            .collect()
+            .collect(flat: false)
             .map { records ->
                 if (records.isEmpty()) {
                     error 'No indexed sample GVCFs were available for GenomicsDBImport.'
                 }
                 def sorted_records = records.sort { left, right -> left[0].id <=> right[0].id }
                 [
-                    sorted_records.collect { meta, _gvcf, _tbi -> meta.id },
-                    sorted_records.collect { _meta, gvcf, _tbi -> gvcf },
-                    sorted_records.collect { _meta, _gvcf, tbi -> tbi }
+                    sorted_records.collect { record -> record[0].id },
+                    sorted_records.collect { record -> record[1] },
+                    sorted_records.collect { record -> record[2] }
                 ]
             }
 
@@ -473,7 +471,7 @@ workflow GATKPOPULATION {
         if (gather_vcfs == 5) {
             def ch_raw_gather_input = ch_raw_vcf
                 .join(ch_raw_vcf_tbi)
-                .collect()
+                .collect(flat: false)
                 .map { records -> [records] }
                 .combine(ch_reference_contig_order.map { contig_order -> [contig_order] })
                 .map { records, contig_order ->
@@ -496,7 +494,7 @@ workflow GATKPOPULATION {
         if (gather_vcfs == 6) {
             def ch_filtered_gather_input = ch_filtered_vcf
                 .join(ch_filtered_vcf_tbi)
-                .collect()
+                .collect(flat: false)
                 .map { records -> [records] }
                 .combine(ch_reference_contig_order.map { contig_order -> [contig_order] })
                 .map { records, contig_order ->

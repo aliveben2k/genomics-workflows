@@ -213,6 +213,8 @@ perl Relate_v8.pl \
 - `-rp clues`
 - `-rp tvs`
 - `-rp all`
+- `-rclues`: redo the full CLUES2 post-Relate stage only, without redoing upstream Relate preparation
+- `-rtvs`: redo the full TreeViewSamples post-Relate stage only, without redoing upstream Relate preparation
 - `-ow`
 - `-npsi INT`: number of breakpoints for broken-stick analysis, default `1`
 - `-clues_mem MEMORY_IN_GB`: memory for CLUES2 summary jobs, including AIC, summarized trajectory plotting, and broken-stick analysis; default inherits `-mem`
@@ -253,6 +255,12 @@ CLUES2 summary processing in this pipeline includes:
 
 The old `-rpp` behavior has been removed.
 
+Rerun scope:
+
+- `-rp clues`: rebuild summarized CLUES2 outputs from existing repeat results
+- `-rclues`: rerun the full CLUES2 stage after Relate, including `SampleBranchLengths`, `RelateToCLUES.py`, `inference.py`, and summary outputs
+- `-ow`: broader overwrite behavior across the pipeline
+
 ### TreeViewSamples
 
 The pipeline automatically summarizes repeat outputs and writes merged TreeViewSamples summary files.
@@ -260,6 +268,12 @@ The pipeline automatically summarizes repeat outputs and writes merged TreeViewS
 If `-tvs_debug` is used, extra debug RDS files are written containing:
 
 - `summary_data`
+- `output_prefix`
+
+Rerun scope:
+
+- `-rp tvs`: rebuild summarized TreeViewSamples outputs from existing repeat results
+- `-rtvs`: rerun the full TreeViewSamples stage after Relate, including per-repeat `SampleBranchLengths` and `TreeViewSample.sh` outputs plus final summary outputs
 
 ## Memory Notes
 
@@ -267,7 +281,6 @@ If `-tvs_debug` is used, extra debug RDS files are written containing:
 - `-clues_mem` can be used when CLUES2 summary jobs need more memory than the main pipeline jobs.
 - `-tvs_mem` can be used when TreeViewSamples summary jobs need more memory than the main pipeline jobs.
 - If `-clues_mem` or `-tvs_mem` are not set, they default to the same value as `-mem`.
-- `output_prefix`
 
 ## Required Pipeline Files
 

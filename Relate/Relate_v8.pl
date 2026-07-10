@@ -1,17 +1,12 @@
 #!/usr/bin/perl
 
 use Cwd qw(getcwd);
-use FindBin qw($RealBin);
 use Term::ANSIColor qw(:constants);
 use Fcntl ':flock';
 
 my $home = (getpwuid $>)[7];
-my $script_dir = $RealBin;
-if (-e "$script_dir\/qsub_subroutine.pl"){
-	require "$script_dir\/qsub_subroutine.pl";
-}
-elsif (-e "$home\/software\/qsub_subroutine.pl"){
-	require "$home\/software\/qsub_subroutine.pl";
+if (-e "$home\/softwares\/qsub_subroutine.pl"){
+	require "$home\/softwares\/qsub_subroutine.pl";
 }
 elsif (-e "$home\/qsub_subroutine.pl"){
 	require "$home\/qsub_subroutine.pl";
@@ -70,6 +65,8 @@ my $rc = 1; my $cf = "b"; my $tco; my $dom;
 my $qout; my $replot; my @cps; my $df; my $nat;
 my $npsi = 1;
 my $tvs_debug = 0;
+my $rclues = 0;
+my $rtvs = 0;
 my $clues_mem;
 my $tvs_mem;
 my $rs_sample_num; my $rs_repeats; my $rseed;
@@ -429,6 +426,12 @@ for (my $i=0; $i<=$#ARGV; $i++){
 		}
 	if ($ARGV[$i] eq "\-rpp" || $ARGV[$i] eq "\--re-plot-py"){ #re-plot output *.png
 		die "-rpp has been removed. CLUES summary plotting now runs automatically unless -nat is used.\n";
+	}
+	if ($ARGV[$i] eq "\-rclues"){
+		$rclues = 1;
+	}
+	if ($ARGV[$i] eq "\-rtvs"){
+		$rtvs = 1;
 	}
 	if ($ARGV[$i] eq "\-nat"){ #CLUES2: --noAlleleTraj
         $nat = "--noAlleleTraj ";
@@ -1180,11 +1183,9 @@ if ($clues == 1 || $tvs == 1){
                             my @tmps = split(/\t|\s+/, $tmp_mrate);
                             $mrate = $tmps[1];
                     }
-                    unless (-e "$o_path_clues[$l]\/$ran\_$z\_CLUES$popi_out_name\_chr$relate_chr\_$clues_fbp[$i]\-$clues_lbp[$i].newick" && $ow == 0){
-                        if ($clues == 1){
-                            print "Sample branch lengths for CLUES \($popi_d_names[$l]\: chr$relate_chr\_$clues_fbp[$i]\-$clues_lbp[$i]\) start...\n";
-                            $qout = "$Relate\/scripts\/SampleBranchLengths\/SampleBranchLengths.sh -i $clues_in\/popsize\/$ran\_popsize_chr$relate_chr -m $mrate $ns\--first_bp $clues_fbp[$i] --last_bp $clues_lbp[$i] $coal\--format n -o $o_path_clues[$l]\/$ran\_$z\_CLUES$popi_out_name\_chr$relate_chr\_$clues_fbp[$i]\-$clues_lbp[$i]\\n";
-                        }
+                    if ($clues == 1 && ($rclues == 1 || !(-e "$o_path_clues[$l]\/$ran\_$z\_CLUES$popi_out_name\_chr$relate_chr\_$clues_fbp[$i]\-$clues_lbp[$i].newick" && $ow == 0))){
+                        print "Sample branch lengths for CLUES \($popi_d_names[$l]\: chr$relate_chr\_$clues_fbp[$i]\-$clues_lbp[$i]\) start...\n";
+                        $qout = "$Relate\/scripts\/SampleBranchLengths\/SampleBranchLengths.sh -i $clues_in\/popsize\/$ran\_popsize_chr$relate_chr -m $mrate $ns\--first_bp $clues_fbp[$i] --last_bp $clues_lbp[$i] $coal\--format n -o $o_path_clues[$l]\/$ran\_$z\_CLUES$popi_out_name\_chr$relate_chr\_$clues_fbp[$i]\-$clues_lbp[$i]\\n";
                     }
                     if ($tvs == 1){
                         my $new_hap = &subset_inputs($ran, $conda, $o_path_tvs[$l], $pop_for_clues, $clues_popis[$l], $exc, $ow, \@treeview_inputs);
@@ -1204,12 +1205,12 @@ if ($clues == 1 || $tvs == 1){
                         else {
                             $tvs_poplabels = "$clues_in\/popsize\/$ran\_popsize_chr$relate_chr.poplabels";
                         }
-	                        unless (-e "$tvs_prefix.treeview_data.rds" && $ow == 0){
+	                        if ($rtvs == 1 || !(-e "$tvs_prefix.treeview_data.rds" && $ow == 0)){
 	                            $tvs_qout .= "$Relate\/scripts\/SampleBranchLengths\/SampleBranchLengths.sh -i $clues_in\/popsize\/$ran\_popsize_chr$relate_chr -m $mrate $ns\--first_bp $clues_fbp[$i] --last_bp $clues_lbp[$i] $coal\--format a -o $tvs_prefix\\n";
 	                            $tvs_qout .= "$Relate\/scripts\/TreeView/TreeViewSample.sh --haps $tvs_input.haps --sample $tvs_input.sample --poplabels $tvs_poplabels --anc $tvs_prefix.anc --mut $tvs_prefix.mut --dist $clues_in\/popsize\/$ran\_popsize_chr$relate_chr.dist --bp_of_interest $clues_fbp[$i] $year\-o $o_path_tvs[$l]\/$ran\_$z\_TreeViewSamples$popi_out_name\_chr$relate_chr\_$clues_fbp[$i] || echo \"Warning: TreeViewSample failed for chr$relate_chr\_$clues_fbp[$i], continuing CLUES pipeline.\"\\n";
-	                        }                    
+	                        }
                     }
-                    unless (-e "$derived_prefix\.txt" && -e "$derived_prefix\_freq.txt" && $ow == 0){
+                    if ($clues == 1 && ($rclues == 1 || !(-e "$derived_prefix\.txt" && -e "$derived_prefix\_freq.txt" && $ow == 0))){
                         my $haplo;
                         if ($hap == 1){
                             $haplo = "-hap";
@@ -1224,7 +1225,7 @@ if ($clues == 1 || $tvs == 1){
                             $qout .= "perl extract_derived_file.pl -i $o_path\/inputs\/$ran\_input_chr$relate_chr -o $branch_path -pos $clues_fbp[$i] -chr $relate_chr -tag $z $haplo\\n";
                         }
                     }
-                    unless ($clues == 0 || (-e "$o_path_clues[$l]\/$ran\_$z\_CLUES$popi_out_name\_chr$relate_chr\_$clues_fbp[$i]\_times.txt" && $ow == 0)){
+                    if ($clues == 1 && ($rclues == 1 || !(-e "$o_path_clues[$l]\/$ran\_$z\_CLUES$popi_out_name\_chr$relate_chr\_$clues_fbp[$i]\_times.txt" && $ow == 0))){
                         $qout .= "python $LocalRelateToCLUES --RelateSamples $o_path_clues[$l]\/$ran\_$z\_CLUES$popi_out_name\_chr$relate_chr\_$clues_fbp[$i]\-$clues_lbp[$i].newick --DerivedFile $derived_prefix.txt --out $o_path_clues[$l]\/$ran\_$z\_CLUES$popi_out_name\_chr$relate_chr\_$clues_fbp[$i]\\n";
                     }
                     $qout .= $tvs_qout;
@@ -1239,10 +1240,7 @@ if ($clues == 1 || $tvs == 1){
                     else {
                         $pf = "--popFreq 1 ";
                     }
-                    unless ($clues == 0 || (-e "$o_path_clues[$l]\/$ran\_$z\_CLUES$popi_out_name\_chr$relate_chr\_$clues_fbp[$i]\-$clues_lbp[$i]\_post.txt" && $ow == 0)){
-                        push(@plot_py, "python $LocalCluesInference --times $o_path_clues[$l]\/$ran\_$z\_CLUES$popi_out_name\_chr$relate_chr\_$clues_fbp[$i]\_times.txt --out $o_path_clues[$l]\/$ran\_$z\_CLUES$popi_out_name\_chr$relate_chr\_$clues_fbp[$i]\-$clues_lbp[$i] $nat$tco$df$pf$dom$coal$cbins[$i]\\n");
-                    }
-                    elsif ($clues == 1 && $replot =~ /clues|all/i){
+                    if ($clues == 1 && ($rclues == 1 || !(-e "$o_path_clues[$l]\/$ran\_$z\_CLUES$popi_out_name\_chr$relate_chr\_$clues_fbp[$i]\-$clues_lbp[$i]\_post.txt" && $ow == 0))){
                         push(@plot_py, "python $LocalCluesInference --times $o_path_clues[$l]\/$ran\_$z\_CLUES$popi_out_name\_chr$relate_chr\_$clues_fbp[$i]\_times.txt --out $o_path_clues[$l]\/$ran\_$z\_CLUES$popi_out_name\_chr$relate_chr\_$clues_fbp[$i]\-$clues_lbp[$i] $nat$tco$df$pf$dom$coal$cbins[$i]\\n");
                     }
 	                }
@@ -1274,7 +1272,7 @@ if ($clues == 1 || $tvs == 1){
 	        my @pending_broken_stick_jobs;
 	        foreach my $summary_dir (@summary_dirs){
 	            my @inference_files = glob("$summary_dir/*_inference.txt");
-	            my $redo_summary = ($ow == 1 || ($replot && $replot =~ /clues|all/i)) ? 1 : 0;
+	            my $redo_summary = ($ow == 1 || $rclues == 1 || ($replot && $replot =~ /clues|all/i)) ? 1 : 0;
 	            my $aic_lowest = "$summary_dir/AIC_lowest.txt";
 	            my $aic_all = "$summary_dir/AIC_all_runs.txt";
 	            my $aic_summary = "$summary_dir/AIC_summary.txt";
@@ -1340,7 +1338,7 @@ if ($clues == 1 || $tvs == 1){
 	                warn "Skipping TreeViewSamples summary for $summary_dir because no *.treeview_data.rds files were found.\n";
 	                next;
 	            }
-	            my $redo_summary = ($ow == 1 || ($replot && $replot =~ /tvs|all/i)) ? 1 : 0;
+	            my $redo_summary = ($ow == 1 || $rtvs == 1 || ($replot && $replot =~ /tvs|all/i)) ? 1 : 0;
 	            my $summary_manifest = "$summary_dir/TreeViewSamples_summary_manifest.txt";
 	            my $summary_bundle = "$summary_dir/TreeViewSamples_summary_all.rds";
 	            my $summary_debug_manifest = "$summary_dir/TreeViewSamples_summary_debug_manifest.txt";
@@ -1974,7 +1972,7 @@ sub modify_poplabels {
 	}
 }
 sub usage {
-	print BOLD "Usage: perl Relate_8.pl -vcf VCF_FILE -pop POPULATION_LABEL_FILE -map RECOMB_MAP_FILE -al ANCESTOR_ID_LIST [-am ANC\/MUT_FOLDER_PATH] [-hap] [-nka] [-o OUTPUT_PATH] [-mask MASK_FILE] [-bins LOWER,UPPER,STEPSIZE] [-rm REMOVE_SAMPLE_ID_FILE] [-pre PREFIX] [-rr] [-coal COAL_FILE] [-dps] [-clues] [-tvs] [-bp CHR\:POS-POS] [-ns INT] [-npsi INT] [-tco INT] [-pf FLOAT] [-d FLOAT] [-cp COLOR_PALETTE] [-m VALUE] [-n VALUE] [-spl VALUE] [-popi POP_NAMES] [-year VALUE] [-rp all\|clues\|tvs] [-cb FILE] [-rc INT] [-rs SAMPLE_NUM,REPEATS] [-rseed INT] [-epsrp INT] [-nat] [-tvs_debug] [--force] [-ow] [-sn SERIAL_NUMBER] [-mem MEMORY_IN_GB] [-clues_mem MEMORY_IN_GB] [-tvs_mem MEMORY_IN_GB] [-t THREADS] [-exc] [-h]\n\n", RESET;
+	print BOLD "Usage: perl Relate_8.pl -vcf VCF_FILE -pop POPULATION_LABEL_FILE -map RECOMB_MAP_FILE -al ANCESTOR_ID_LIST [-am ANC\/MUT_FOLDER_PATH] [-hap] [-nka] [-o OUTPUT_PATH] [-mask MASK_FILE] [-bins LOWER,UPPER,STEPSIZE] [-rm REMOVE_SAMPLE_ID_FILE] [-pre PREFIX] [-rr] [-coal COAL_FILE] [-dps] [-clues] [-tvs] [-bp CHR\:POS-POS] [-ns INT] [-npsi INT] [-tco INT] [-pf FLOAT] [-d FLOAT] [-cp COLOR_PALETTE] [-m VALUE] [-n VALUE] [-spl VALUE] [-popi POP_NAMES] [-year VALUE] [-rp all\|clues\|tvs] [-rclues] [-rtvs] [-cb FILE] [-rc INT] [-rs SAMPLE_NUM,REPEATS] [-rseed INT] [-epsrp INT] [-nat] [-tvs_debug] [--force] [-ow] [-sn SERIAL_NUMBER] [-mem MEMORY_IN_GB] [-clues_mem MEMORY_IN_GB] [-tvs_mem MEMORY_IN_GB] [-t THREADS] [-exc] [-h]\n\n", RESET;
 	print "If -am is set, -vcf, -map and -al are not required.\n";
 	print "For -popi, multiple populations as an group could be indicated by \[population_1,population_2\]. Multiple independent runs can be indicated by comma as population_1,population2.\nYou can combine these two functions as [population_1,population_2],population_3\n";
 	print "The first run will be population_1\+population_2, and the second run will be population_3.\n";

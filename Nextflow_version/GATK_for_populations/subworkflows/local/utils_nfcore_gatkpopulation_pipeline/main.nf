@@ -10,7 +10,6 @@
 
 include { UTILS_NFSCHEMA_PLUGIN     } from '../../nf-core/utils_nfschema_plugin'
 include { paramsSummaryMap          } from 'plugin/nf-schema'
-include { samplesheetToList         } from 'plugin/nf-schema'
 include { paramsHelp                } from 'plugin/nf-schema'
 include { completionEmail           } from '../../nf-core/utils_nfcore_pipeline'
 include { completionSummary         } from '../../nf-core/utils_nfcore_pipeline'
@@ -96,17 +95,29 @@ workflow PIPELINE_INITIALISATION {
     if (input) {
         if (start_stage <= 2) {
             ch_stage_input = channel
-                .fromList(samplesheetToList(input, "${projectDir}/assets/schema_input.json"))
-                .map { meta, fastq_1, fastq_2 ->
-                    [meta.id, meta + [single_end: !fastq_2], fastq_2 ? [fastq_1, fastq_2] : [fastq_1]]
+                .fromPath(input, checkIfExists: true)
+                .splitCsv(header: true, strip: true)
+                .map { row ->
+                    requireCsvColumns(row, ['sample', 'fastq_1', 'fastq_2'])
+                    def sample_id = requireSimpleId(row.sample, 'sample')
+                    def fastq_1 = requireInputFile(row.fastq_1, 'fastq_1', /^([\S\s]*\/)?[^\s\/]+\.f(ast)?q(\.trimmed)?\.gz$/)
+                    def fastq_2 = row.fastq_2 ? requireInputFile(row.fastq_2, 'fastq_2', /^([\S\s]*\/)?[^\s\/]+\.f(ast)?q(\.trimmed)?\.gz$/) : null
+                    [sample_id, [id: sample_id, single_end: !fastq_2], fastq_2 ? [fastq_1, fastq_2] : [fastq_1]]
                 }
                 .groupTuple()
                 .map { samplesheet -> validateInputSamplesheet(samplesheet) }
                 .map { meta, fastqs -> [meta, fastqs.flatten()] }
         } else if (start_stage == 3) {
             ch_stage_input = channel
-                .fromList(samplesheetToList(input, "${projectDir}/assets/schema_input_stage3.json"))
-                .map { meta, bam, bai -> [meta.id, meta, bam, bai] }
+                .fromPath(input, checkIfExists: true)
+                .splitCsv(header: true, strip: true)
+                .map { row ->
+                    requireCsvColumns(row, ['sample', 'bam', 'bai'])
+                    def sample_id = requireSimpleId(row.sample, 'sample')
+                    def bam = requireInputFile(row.bam, 'bam', /^\S+\.bam$/)
+                    def bai = requireInputFile(row.bai, 'bai', /^\S+\.(bam\.)?bai$/)
+                    [sample_id, [id: sample_id], bam, bai]
+                }
                 .groupTuple()
                 .map { id, metas, bams, bais ->
                     requireUniqueEntry(id, metas)
@@ -115,8 +126,15 @@ workflow PIPELINE_INITIALISATION {
                 }
         } else if (start_stage == 4) {
             ch_stage_input = channel
-                .fromList(samplesheetToList(input, "${projectDir}/assets/schema_input_stage4.json"))
-                .map { meta, gvcf, tbi -> [meta.id, meta, gvcf, tbi] }
+                .fromPath(input, checkIfExists: true)
+                .splitCsv(header: true, strip: true)
+                .map { row ->
+                    requireCsvColumns(row, ['sample', 'gvcf', 'tbi'])
+                    def sample_id = requireSimpleId(row.sample, 'sample')
+                    def gvcf = requireInputFile(row.gvcf, 'gvcf', /^\S+\.g\.vcf\.gz$/)
+                    def tbi = requireInputFile(row.tbi, 'tbi', /^\S+\.g\.vcf\.gz\.tbi$/)
+                    [sample_id, [id: sample_id], gvcf, tbi]
+                }
                 .groupTuple()
                 .map { id, metas, gvcfs, tbis ->
                     requireUniqueEntry(id, metas)
@@ -125,8 +143,13 @@ workflow PIPELINE_INITIALISATION {
                 }
         } else if (start_stage == 5) {
             ch_stage_input = channel
-                .fromList(samplesheetToList(input, "${projectDir}/assets/schema_input_stage5.json"))
-                .map { meta, genomicsdb -> [meta.id, meta, genomicsdb] }
+                .fromPath(input, checkIfExists: true)
+                .splitCsv(header: true, strip: true)
+                .map { row ->
+                    requireCsvColumns(row, ['contig', 'genomicsdb'])
+                    def contig = requireSimpleId(row.contig, 'contig')
+                    [contig, [id: contig], file(row.genomicsdb, checkIfExists: true)]
+                }
                 .groupTuple()
                 .map { id, metas, databases ->
                     requireUniqueEntry(id, metas)
@@ -134,8 +157,15 @@ workflow PIPELINE_INITIALISATION {
                 }
         } else {
             ch_stage_input = channel
-                .fromList(samplesheetToList(input, "${projectDir}/assets/schema_input_stage6.json"))
-                .map { meta, vcf, tbi -> [meta.id, meta, vcf, tbi] }
+                .fromPath(input, checkIfExists: true)
+                .splitCsv(header: true, strip: true)
+                .map { row ->
+                    requireCsvColumns(row, ['contig', 'vcf', 'tbi'])
+                    def contig = requireSimpleId(row.contig, 'contig')
+                    def vcf = requireInputFile(row.vcf, 'vcf', /^\S+\.vcf\.gz$/)
+                    def tbi = requireInputFile(row.tbi, 'tbi', /^\S+\.vcf\.gz\.tbi$/)
+                    [contig, [id: contig], vcf, tbi]
+                }
                 .groupTuple()
                 .map { id, metas, vcfs, tbis ->
                     requireUniqueEntry(id, metas)
@@ -220,6 +250,33 @@ def requireUniqueEntry(id, metas) {
     if (metas.size() != 1) {
         error "Entry IDs must be unique in the stage input manifest: ${id}"
     }
+}
+
+def requireCsvColumns(row, expected_columns) {
+    def observed_columns = row.keySet() as Set
+    def expected_column_set = expected_columns as Set
+    if (observed_columns != expected_column_set) {
+        error "Input CSV must contain exactly these columns: ${expected_columns.join(', ')}"
+    }
+}
+
+def requireSimpleId(value, column_name) {
+    def id = value?.toString()?.trim()
+    if (!id || id =~ /\s/) {
+        error "Column '${column_name}' must contain a non-empty ID without whitespace."
+    }
+    id
+}
+
+def requireInputFile(value, column_name, pattern) {
+    def path = value?.toString()?.trim()
+    if (!path) {
+        error "Column '${column_name}' must contain a file path."
+    }
+    if (!(path ==~ pattern)) {
+        error "Column '${column_name}' has an invalid file name: ${path}"
+    }
+    file(path, checkIfExists: true)
 }
 
 def requireBamIndex(bam, bai) {

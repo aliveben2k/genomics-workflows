@@ -17,9 +17,8 @@ workflow PREPROCESS_CPU {
     ch_reads
     ch_bwa_index
     ch_fasta
-    fasta
-    fai
-    dict
+    ch_reference_fai
+    ch_reference_dict
     known_sites
     known_sites_tbi
     interval
@@ -29,18 +28,18 @@ workflow PREPROCESS_CPU {
     main:
 
     def reference_meta = [id: 'reference']
-    def ch_reference_fasta = channel.value([reference_meta, fasta])
-    def ch_reference_fai = channel.value([reference_meta, fai])
-    def ch_reference_dict = channel.value([reference_meta, dict])
     def ch_known_sites = channel.value([reference_meta, known_sites])
     def ch_known_sites_tbi = channel.value([reference_meta, known_sites_tbi])
+    def ch_fasta_path = ch_fasta.map { _meta, fasta -> fasta }
+    def ch_fai_path = ch_reference_fai.map { _meta, fai -> fai }
+    def ch_dict_path = ch_reference_dict.map { _meta, dict -> dict }
 
     BWA_MEM(ch_reads, ch_bwa_index, ch_fasta, true)
 
     def ch_pre_bqsr_bam = channel.empty()
     def ch_duplicate_metrics = channel.empty()
     if (mark_duplicates) {
-        GATK4_MARKDUPLICATES(BWA_MEM.out.bam, fasta, fai)
+        GATK4_MARKDUPLICATES(BWA_MEM.out.bam, ch_fasta_path, ch_fai_path)
         ch_pre_bqsr_bam = GATK4_MARKDUPLICATES.out.bam.join(GATK4_MARKDUPLICATES.out.bai)
         ch_duplicate_metrics = GATK4_MARKDUPLICATES.out.metrics
     } else {
@@ -58,7 +57,7 @@ workflow PREPROCESS_CPU {
         }
         GATK4_BASERECALIBRATOR(
             ch_baserecalibrator_input,
-            ch_reference_fasta,
+            ch_fasta,
             ch_reference_fai,
             ch_reference_dict,
             ch_known_sites,
@@ -68,7 +67,7 @@ workflow PREPROCESS_CPU {
         def ch_applybqsr_input = ch_pre_bqsr_bam
             .join(GATK4_BASERECALIBRATOR.out.table)
             .map { meta, bam, bai, table -> [meta, bam, bai, table, interval] }
-        GATK4_APPLYBQSR(ch_applybqsr_input, fasta, fai, dict)
+        GATK4_APPLYBQSR(ch_applybqsr_input, ch_fasta_path, ch_fai_path, ch_dict_path)
 
         def ch_temporary_bqsr_bam = GATK4_APPLYBQSR.out.bam.join(GATK4_APPLYBQSR.out.bai)
         FINALIZE_CPU_BQSR_BAM(ch_temporary_bqsr_bam)

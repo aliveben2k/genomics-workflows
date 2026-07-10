@@ -73,7 +73,7 @@ def getWorkflowVersion() {
 def dumpParametersToJSON(outdir) {
     def timestamp = new java.util.Date().format('yyyy-MM-dd_HH-mm-ss')
     def filename  = "params_${timestamp}.json"
-    def temp_pf   = new File(workflow.launchDir.toString(), ".${filename}")
+    def temp_pf   = new File(workflow.launchDir.toString(), ".${workflow.sessionId}_${filename}")
     def jsonStr   = groovy.json.JsonOutput.toJson(params)
     temp_pf.text  = groovy.json.JsonOutput.prettyPrint(jsonStr)
 

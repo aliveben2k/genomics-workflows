@@ -1,6 +1,7 @@
 # Genomics Analysis Pipelines
 
 Automated and reproducible bioinformatics workflows for whole-genome sequencing (WGS), population genomics, and evolutionary genomics analyses on High-Performance Computing (HPC) environments.
+Some pipelines have Nextflow or Nextflow+Python version, please check the folder "Nextflow_version" first.
 
 ---
 

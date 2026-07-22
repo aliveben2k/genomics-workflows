@@ -1,4 +1,4 @@
-# Nextflow_version/nj-tree
+# nj-tree (Nextflow+python_version)
 
 An nf-core-template-based Nextflow DSL2 pipeline for chunked pairwise genomic
 distance calculation, principal coordinates analysis (PCoA), and

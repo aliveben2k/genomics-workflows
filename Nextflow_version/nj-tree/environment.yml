@@ -1,0 +1,13 @@
+name: nj-tree
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.12
+  - biopython
+  - matplotlib-base
+  - numpy
+  - pandas
+  - pysam
+  - scikit-bio

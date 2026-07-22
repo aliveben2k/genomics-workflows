@@ -535,7 +535,9 @@ sub process_record_line {
 	if ($check_existance =~ /\*/){
 		$check_existance =~ s/\*/B/g;
 	}
-	if ($check_existance !~ /$nucl/){
+	my @check_alleles = split(/\,/, $check_existance);
+	my %check_lookup = map { $_ => 1 } @check_alleles;
+	unless ($check_lookup{$nucl}){
 		return;
 	}
 	$nucl =~ s/B/\*/g;
@@ -671,17 +673,11 @@ sub process_record_line {
 		}
 		$joint_out = join(" ", @out_eles);
 		$joint_out =~ s/\/|\|/ /g;
-		if ($bi == 1){
-			$joint_out =~ s/[2-9]/1/;
-		}
 		$out_line .= $joint_out;
 	}
 	else {
 		my @fixed = @eles[0..8];
 		$joint_out = join("\t", @out_eles);
-		if ($bi == 1){
-			$joint_out =~ s/[2-9]/1/;
-		}
 		$out_line = join("\t", @fixed, $joint_out);
 	}
 	return ($out_line, $map_line);
@@ -717,7 +713,7 @@ sub get_ancestral_allele {
 	}
 	my @anc_nucl_array;
 	foreach my $o (0..$#anc_alleles){
-		@anc_info = split(/\:/, $anc_alleles[$o]);
+		my @anc_info = split(/\:/, $anc_alleles[$o]);
 		my $anc_number;
 		my @alleles = split(/\/|\|/, $anc_info[0]);
 		my $anc_nucl;
@@ -731,10 +727,12 @@ sub get_ancestral_allele {
 			if (scalar(@alleles) == 2){
 				my @sorted_depths = sort {$depths[$b] <=> $depths[$a]} 0..$#depths;
 				my @sorted_alleles = @alleles[@sorted_depths];
-				if ($sorted_depths[0] == 0){
+				if ($depths[$sorted_depths[0]] == 0){
 					$anc_number = "N";
 				}
-				$anc_number = @sorted_alleles[0];
+				else {
+					$anc_number = $sorted_alleles[0];
+				}
 			}
 			else {
 				$anc_number = $alleles[0];

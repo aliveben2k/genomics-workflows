@@ -1,0 +1,121 @@
+name: Nextflow CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "Nextflow_version/**"
+      - ".github/workflows/nextflow-ci.yml"
+
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "Nextflow_version/**"
+      - ".github/workflows/nextflow-ci.yml"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-nj-tree:
+    name: Test nj-tree
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Nextflow
+        uses: nf-core/setup-nextflow@v2
+        with:
+          version: "25.10.4"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install nj-tree dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            biopython \
+            matplotlib \
+            numpy \
+            pandas \
+            pysam \
+            scikit-bio
+
+      - name: Run nj-tree test dataset
+        working-directory: Nextflow_version/nj-tree
+        env:
+          NXF_ANSI_LOG: "false"
+        run: |
+          nextflow run . \
+            -profile test,local
+
+      - name: Check expected outputs
+        working-directory: Nextflow_version/nj-tree
+        run: |
+          test -s results-test/test.mtx
+          test -s results-test/test_final.npz
+          test -s results-test/test_pcoa.txt
+          test -s results-test/test_pcoa.pdf
+          test -s results-test/test_tree.newick
+          test -s results-test/test_tree.nex
+          test -s results-test/test_tree_pcoa.pkl
+
+      - name: Upload test outputs after failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nj-tree-test-files
+          path: |
+            Nextflow_version/nj-tree/.nextflow.log
+            Nextflow_version/nj-tree/results-test/
+          if-no-files-found: ignore
+
+  check-gatk-pipeline:
+    name: Check GATK pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Nextflow
+        uses: nf-core/setup-nextflow@v2
+        with:
+          version: "25.10.4"
+
+      - name: Check Nextflow configuration
+        working-directory: Nextflow_version/GATK_for_populations
+        env:
+          NXF_ANSI_LOG: "false"
+        run: |
+          nextflow config . > /tmp/gatk-nextflow.config
+
+      - name: Check pipeline initialization
+        working-directory: Nextflow_version/GATK_for_populations
+        env:
+          NXF_ANSI_LOG: "false"
+        run: |
+          nextflow run . --help

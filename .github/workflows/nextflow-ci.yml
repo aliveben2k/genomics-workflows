@@ -63,7 +63,7 @@ jobs:
           NXF_ANSI_LOG: "false"
         run: |
           nextflow run . \
-            -profile test,local
+            -profile test,local,stub
 
       - name: Check expected outputs
         working-directory: Nextflow_version/nj-tree
